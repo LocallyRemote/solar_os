@@ -26,6 +26,18 @@ class FlavorPackagesTest(unittest.TestCase):
             self.catalog,
         )
 
+    def test_public_flavor_name_can_override_package_configuration_name(self):
+        self.assertEqual(
+            generate_flavor_config.public_flavor_name("full", "beta"),
+            "beta",
+        )
+        self.assertEqual(
+            generate_flavor_config.public_flavor_name("full", ""),
+            "full",
+        )
+        with self.assertRaisesRegex(ValueError, "invalid flavor name"):
+            generate_flavor_config.public_flavor_name("full", "beta flavor")
+
     def test_games_are_only_in_full(self):
         built_in_flavors = ("core", "full", "netrunner", "rover", "writerdeck")
         for flavor in built_in_flavors:

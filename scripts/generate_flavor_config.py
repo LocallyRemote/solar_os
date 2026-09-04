@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 from pathlib import Path
+import re
 import sys
 import tomllib
 
@@ -349,6 +350,13 @@ def load_flavor(path: Path,
     return name, description, groups_effective, packages_enabled
 
 
+def public_flavor_name(configured_name: str, override: str) -> str:
+    name = override or configured_name
+    if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}", name) is None:
+        raise ValueError(f"invalid flavor name: {name!r}")
+    return name
+
+
 def capabilities_supported(required: tuple[str, ...],
                            any_required: tuple[str, ...],
                            available: set[str]) -> bool:
@@ -609,6 +617,7 @@ def generate_cmake(name: str,
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", required=True, type=Path)
+    parser.add_argument("--name-override", default="")
     parser.add_argument("--packages", default=DEFAULT_PACKAGE_CATALOG, type=Path)
     parser.add_argument("--board-capabilities", default="")
     parser.add_argument("--board-required-packages", default="")
@@ -621,6 +630,7 @@ def main() -> int:
     try:
         catalog = load_catalog(args.packages)
         name, description, groups_enabled, packages_enabled = load_flavor(args.input, catalog)
+        name = public_flavor_name(name, args.name_override)
         required_packages = parse_package_list(args.board_required_packages)
         packages_enabled = enable_required_packages(
             catalog,

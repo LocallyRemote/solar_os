@@ -79,6 +79,7 @@ def _remove_path(path: Path) -> None:
 
 build_dir = Path(env.subst("$BUILD_DIR"))
 flavor = _selected_flavor()
+flavor_name_override = os.environ.get("SOLAR_OS_FLAVOR_NAME_OVERRIDE", "")
 board = _selected_board()
 board_config = env.BoardConfig()
 configured_partition = str(board_config.get("build.partitions", "partitions.csv"))
@@ -100,6 +101,7 @@ vga_mode = _selected_vga_mode()
 # those processes cannot fall back to another board or flavor.
 os.environ["SOLAR_OS_BOARD"] = board
 os.environ["SOLAR_OS_FLAVOR"] = flavor
+os.environ["SOLAR_OS_FLAVOR_NAME_OVERRIDE"] = flavor_name_override
 os.environ["SOLAR_OS_LAYOUT"] = layout
 os.environ["SOLAR_OS_CVBS_MODE"] = cvbs_mode
 os.environ["SOLAR_OS_VGA_MODE"] = vga_mode
@@ -118,6 +120,7 @@ board_config.update("upload.maximum_size", maximum_size)
 
 _append_cmake_arg(f"-DSOLAR_OS_FLAVOR={flavor}")
 _append_cmake_arg(f"-DSOLAR_OS_FLAVOR_FILE={flavor_file_cmake}")
+_append_cmake_arg(f"-DSOLAR_OS_FLAVOR_NAME_OVERRIDE={flavor_name_override}")
 _append_cmake_arg(f"-DSOLAR_OS_LAYOUT={layout}")
 _append_cmake_arg(f"-DSOLAR_OS_CVBS_MODE={cvbs_mode}")
 _append_cmake_arg(f"-DSOLAR_OS_VGA_MODE={vga_mode}")
@@ -151,6 +154,7 @@ tracked_files = (
 stamp = (
     f"board={board}\n"
     f"flavor={flavor}\n"
+    f"flavor_name_override={flavor_name_override}\n"
     f"flavor_file={flavor_file}\n"
     f"layout={layout}\n"
     f"partition={partition_file}\n"
