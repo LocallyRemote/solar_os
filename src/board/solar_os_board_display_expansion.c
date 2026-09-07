@@ -11,7 +11,9 @@ esp_err_t solar_os_board_display_register_primary(solar_os_board_display_t *disp
 {
     if (display == NULL || display->ops == NULL || display->driver == NULL ||
         display->u8g2 == NULL || display->driver_name == NULL ||
-        display->controller == NULL || display->width == 0 || display->height == 0) {
+        display->controller == NULL || display->width == 0 || display->height == 0 ||
+        display->width != u8g2_GetDisplayWidth(display->u8g2) ||
+        display->height != u8g2_GetDisplayHeight(display->u8g2)) {
         return ESP_ERR_INVALID_ARG;
     }
     portENTER_CRITICAL(&primary_display_lock);

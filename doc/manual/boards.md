@@ -903,6 +903,14 @@ require a ready named display target at runtime.
 The board header then provides metadata and pins. The built-in Waveshare target
 uses the ST7305 reflective LCD driver:
 
+`SOLAR_OS_BOARD_DISPLAY_WIDTH` and `SOLAR_OS_BOARD_DISPLAY_HEIGHT` always
+describe the logical SolarOS drawing area after rotation. A controller driver
+that needs the unrotated panel address space uses
+`SOLAR_OS_BOARD_DISPLAY_NATIVE_WIDTH` and
+`SOLAR_OS_BOARD_DISPLAY_NATIVE_HEIGHT` separately. Display targets register
+the dimensions of their initialized U8g2 logical coordinate space; registration
+rejects a target whose advertised dimensions disagree with that space.
+
 ```c
 #define SOLAR_OS_BOARD_DISPLAY_CONTROLLER "ST7305"
 #define SOLAR_OS_BOARD_DISPLAY_WIDTH 400

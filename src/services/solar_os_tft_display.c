@@ -291,21 +291,15 @@ static esp_err_t attach_tft(const char *name,
         return ret;
     }
     strlcpy(device->name, name, sizeof(device->name));
+    u8g2_t *const u8g2 = tft_ili9341_get_u8g2(&device->driver);
     device->display = (solar_os_board_display_t) {
         .ops = &display_ops,
         .driver = &device->driver,
         .driver_name = st7796 ? "st7796" : "ili9341",
-        .u8g2 = tft_ili9341_get_u8g2(&device->driver),
+        .u8g2 = u8g2,
         .controller = st7796 ? "ST7796" : "ILI9341",
-#if defined(SOLAR_OS_BOARD_DISPLAY_NATIVE_WIDTH) && defined(SOLAR_OS_BOARD_DISPLAY_NATIVE_HEIGHT)
-        /* Registered target dims are post-rotation (landscape); native config
-         * above is pre-rotation, so swap here to match. */
-        .width = SOLAR_OS_BOARD_DISPLAY_NATIVE_HEIGHT,
-        .height = SOLAR_OS_BOARD_DISPLAY_NATIVE_WIDTH,
-#else
-        .width = st7796 ? 480 : 320,
-        .height = st7796 ? 320 : 240,
-#endif
+        .width = u8g2_GetDisplayWidth(u8g2),
+        .height = u8g2_GetDisplayHeight(u8g2),
         .surface_formats = SOLAR_OS_DISPLAY_FORMAT_INDEX8_BIT,
         .frame_formats = SOLAR_OS_DISPLAY_FORMAT_INDEX2_BIT,
         .preferred_stream_fps = st7796 ? 25 : 30,

@@ -140,14 +140,15 @@ static esp_err_t attach(const char *name,
         return ret;
     }
     strlcpy(device->name, name, sizeof(device->name));
+    u8g2_t *const u8g2 = cvbs_pal_get_u8g2(&device->driver);
     device->display = (solar_os_board_display_t) {
         .ops = &display_ops,
         .driver = &device->driver,
         .driver_name = "cvbs-pal",
-        .u8g2 = cvbs_pal_get_u8g2(&device->driver),
+        .u8g2 = u8g2,
         .controller = "CVBS PAL",
-        .width = CVBS_PAL_WIDTH,
-        .height = CVBS_PAL_HEIGHT,
+        .width = u8g2_GetDisplayWidth(u8g2),
+        .height = u8g2_GetDisplayHeight(u8g2),
         .frame_formats = SOLAR_OS_DISPLAY_FORMAT_MONO1_BIT,
         .preferred_stream_fps = 25,
         .max_stream_pixels_per_second = 2400000U,
@@ -163,8 +164,8 @@ static esp_err_t attach(const char *name,
         strlcpy(target.driver, "cvbs-pal", sizeof(target.driver));
         strlcpy(target.controller, "CVBS PAL", sizeof(target.controller));
         strlcpy(target.role, "aux", sizeof(target.role));
-        target.width = CVBS_PAL_WIDTH;
-        target.height = CVBS_PAL_HEIGHT;
+        target.width = u8g2_GetDisplayWidth(u8g2);
+        target.height = u8g2_GetDisplayHeight(u8g2);
         target.ready = true;
         target.frame_formats = SOLAR_OS_DISPLAY_FORMAT_MONO1_BIT;
         target.preferred_stream_fps = 25;

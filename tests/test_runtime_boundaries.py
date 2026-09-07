@@ -393,6 +393,31 @@ class RuntimeBoundaryTest(unittest.TestCase):
         self.assertIn("display->config.width - 1U", tft)
         self.assertIn("display->config.height - 1U", tft)
 
+    def test_display_targets_use_u8g2_logical_geometry(self):
+        display = (ROOT / "src/services/solar_os_display.c").read_text(
+            encoding="utf-8"
+        )
+        board_display = (
+            ROOT / "src/board/solar_os_board_display_expansion.c"
+        ).read_text(encoding="utf-8")
+        tft = (ROOT / "src/services/solar_os_tft_display.c").read_text(
+            encoding="utf-8"
+        )
+
+        for source in (display, board_display):
+            self.assertIn(
+                "width != u8g2_GetDisplayWidth", source
+            )
+            self.assertIn(
+                "height != u8g2_GetDisplayHeight", source
+            )
+        registered_geometry = tft.split(
+            "device->display = (solar_os_board_display_t)", 1
+        )[1].split(".surface_formats", 1)[0]
+        self.assertIn(".width = u8g2_GetDisplayWidth(u8g2)", registered_geometry)
+        self.assertIn(".height = u8g2_GetDisplayHeight(u8g2)", registered_geometry)
+        self.assertNotIn("SOLAR_OS_BOARD_DISPLAY_NATIVE_WIDTH", registered_geometry)
+
     def test_foreground_apps_use_one_class_lifecycle(self):
         sources = list((ROOT / "src/apps").glob("*.c"))
         sources += list((ROOT / "src/shell").glob("*.c"))
