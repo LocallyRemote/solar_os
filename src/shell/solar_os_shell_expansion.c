@@ -998,7 +998,7 @@ static void expansion_print_attach_error(solar_os_shell_io_t *term,
     case ESP_ERR_NO_MEM:
         solar_os_shell_io_writeln(
             term,
-            "expansion attach: no free internal expansion, resource, or service slots");
+            "expansion attach: insufficient memory or no free resource or service slots");
         break;
     case ESP_ERR_NOT_ALLOWED:
         solar_os_shell_io_printf(term,

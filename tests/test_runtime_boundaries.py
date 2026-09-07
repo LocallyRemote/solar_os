@@ -31,8 +31,6 @@ class RuntimeBoundaryTest(unittest.TestCase):
                 "static solar_os_job_runtime_t job_runtimes",
             "src/services/solar_os_sessions.c":
                 "static solar_os_session_state_t session_state",
-            "src/services/solar_os_expansion.c":
-                "static solar_os_expansion_device_t devices",
             "src/services/solar_os_buses.c":
                 "static solar_os_bus_info_t buses",
             "src/services/solar_os_port.c":
@@ -45,6 +43,16 @@ class RuntimeBoundaryTest(unittest.TestCase):
         for relative_path, declaration in declarations.items():
             source = (ROOT / relative_path).read_text(encoding="utf-8")
             self.assertIn(declaration, source, relative_path)
+
+    def test_expansion_registry_prefers_external_memory(self):
+        source = (ROOT / "src/services/solar_os_expansion.c").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("SOLAR_OS_EXPANSION_DEVICE_MAX", source)
+        self.assertIn("solar_os_memory_calloc(", source)
+        self.assertIn("SOLAR_OS_MEMORY_EXTERNAL_PREFERRED", source)
+        self.assertIn("static StaticSemaphore_t devices_mutex_storage;", source)
+        self.assertNotIn("portENTER_CRITICAL(&devices_lock)", source)
 
     def test_telnet_uses_an_external_listener_and_internal_shell_stack(self):
         telnetd = (ROOT / "src/jobs/solar_os_telnetd_job.c").read_text(

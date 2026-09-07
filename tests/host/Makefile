@@ -3,7 +3,7 @@ CFLAGS ?= -std=c11 -O2 -Wall -Wextra -Werror
 
 ROOT := ../..
 WRITER_DIR := $(ROOT)/src/apps
-TARGETS := writer_buffer_test writer_files_test sketch_canvas_test text_search_test doc_layout_test shell_parse_test shell_launch_test shell_line_test shell_completion_test shell_diag_test scheduler_test schedule_test script_lifecycle_test app_file_types_test gameboy_support_test storage_mounts_test json_scan_test keys_test input_test board_caps_test hid_keyboard_report_test ble_keyboard_scan_policy_test ps2_keyboard_test ps2_mouse_test cardkb_codec_test cl32_keyboard_test battery_service_test midi_codec_test midi_service_test parameters_test controls_test osc_test dsp_test stream_test resources_test audio_codec_test webradio_catalog_test gif_decode_stack_test nvs_backup_test agent_reference_test manual_external_metadata_test terminal_geometry_test app_exit_result_test terminal_preferences_test tui_widgets_test wireguard_crypto_test meshcore_channel_key_test meshcore_stream_codec_test link_repeater_test time_timezone_test rtc_service_test rtc_pcf85063_test
+TARGETS := writer_buffer_test writer_files_test sketch_canvas_test text_search_test doc_layout_test shell_parse_test shell_launch_test shell_line_test shell_completion_test shell_diag_test scheduler_test schedule_test script_lifecycle_test app_file_types_test gameboy_support_test storage_mounts_test json_scan_test keys_test input_test board_caps_test hid_keyboard_report_test ble_keyboard_scan_policy_test ps2_keyboard_test ps2_mouse_test cardkb_codec_test cl32_keyboard_test battery_service_test midi_codec_test midi_service_test parameters_test controls_test osc_test dsp_test stream_test resources_test expansion_registry_test audio_codec_test webradio_catalog_test gif_decode_stack_test nvs_backup_test agent_reference_test manual_external_metadata_test terminal_geometry_test app_exit_result_test terminal_preferences_test tui_widgets_test wireguard_crypto_test meshcore_channel_key_test meshcore_stream_codec_test link_repeater_test time_timezone_test rtc_service_test rtc_pcf85063_test
 
 MANUAL_GENERATED_DIR := generated/solar_os
 MANUAL_GENERATED_HEADER := $(MANUAL_GENERATED_DIR)/solar_os_manual_data.h
@@ -183,6 +183,18 @@ resources_test: resources_test.c $(ROOT)/src/services/solar_os_resources.c $(ROO
 	$(CC) $(CFLAGS) -D_GNU_SOURCE -include compat.h -I. -I$(ROOT)/src/services \
 		resources_test.c $(ROOT)/src/services/solar_os_resources.c -o $@
 
+expansion_registry_test: expansion_registry_test.c \
+		$(ROOT)/src/services/solar_os_expansion.c \
+		$(ROOT)/src/services/solar_os_expansion.h \
+		$(ROOT)/src/services/solar_os_memory.h \
+		expansion_stubs/solar_os_board.h expansion_stubs/solar_os_config.h \
+		expansion_stubs/driver/i2c_master.h \
+		expansion_stubs/driver/spi_master.h expansion_stubs/soc/soc_caps.h
+	$(CC) $(CFLAGS) -D_GNU_SOURCE -ffunction-sections -fdata-sections \
+		-include compat.h -Iexpansion_stubs -I. -I$(ROOT)/include \
+		-I$(ROOT)/src -I$(ROOT)/src/services expansion_registry_test.c \
+		$(ROOT)/src/services/solar_os_expansion.c -Wl,--gc-sections -o $@
+
 audio_codec_test: audio_codec_test.c $(ROOT)/src/services/solar_os_audio_codec.c $(ROOT)/src/services/solar_os_audio_codec.h $(ROOT)/src/services/solar_os_audio_pcm.c $(ROOT)/src/services/solar_os_audio_pcm.h esp_err.h
 	$(CC) $(CFLAGS) -DSOLAR_OS_AUDIO_CODEC_HOST_TEST -I. -I$(ROOT)/src/services -I$(ROOT)/components/minimp3/include \
 		audio_codec_test.c $(ROOT)/src/services/solar_os_audio_codec.c \
@@ -339,6 +351,7 @@ test: $(TARGETS)
 	./dsp_test
 	./stream_test
 	./resources_test
+	./expansion_registry_test
 	./audio_codec_test
 	./webradio_catalog_test
 	./gif_decode_stack_test
