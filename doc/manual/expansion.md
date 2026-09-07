@@ -50,12 +50,12 @@ expansion devices
 display list
 ```
 
-`expansion drivers` groups compiled drivers into Audio, Display, Input, Power,
-Radio, Sensor, Storage, and Utility categories, with driver names sorted inside
-each category. Its aligned columns also show probe support, bus type, and the
-driver summary. `expansion devices` prints each attached device in a separate
-block, with its name in bold followed by origin, readiness, startup mode,
-attachment policy, and bindings.
+`expansion drivers` groups compiled drivers under bold Audio, Display, Input,
+Power, Radio, Sensor, Storage, and Utility headings, with driver names sorted
+inside each category. Its aligned rows also show probe support, bus type, and
+the driver summary. `expansion devices` prints each attached device in a
+separate block, with its name in bold followed by origin, readiness, startup
+mode, attachment policy, and bindings.
 
 From a script, inspect `solaros.expansion.drivers()` and
 `solaros.expansion.devices()`. A driver existing in firmware does not mean a

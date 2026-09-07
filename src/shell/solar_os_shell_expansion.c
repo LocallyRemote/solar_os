@@ -433,16 +433,10 @@ static bool expansion_next_driver_in_category(
 
 static void expansion_print_drivers(solar_os_shell_io_t *term)
 {
-    size_t category_width = strlen("CATEGORY");
     size_t driver_width = strlen("DRIVER");
     for (size_t i = 0; i < solar_os_expansion_driver_count(); i++) {
         solar_os_expansion_driver_t driver;
         if (solar_os_expansion_get_driver(i, &driver)) {
-            const size_t category_len = strlen(
-                solar_os_expansion_category_name(driver.category));
-            if (category_len > category_width) {
-                category_width = category_len;
-            }
             const size_t width = strlen(driver.name);
             if (width > driver_width) {
                 driver_width = width;
@@ -450,26 +444,32 @@ static void expansion_print_drivers(solar_os_shell_io_t *term)
         }
     }
 
-    solar_os_shell_io_printf(term,
-                             "%-*s %-*s %-5s %-6s %s\n",
-                             (int)category_width,
-                             "CATEGORY",
-                             (int)driver_width,
-                             "DRIVER",
-                             "PROBE",
-                             "BUS",
-                             "SUMMARY");
+    bool printed_category = false;
     for (solar_os_expansion_category_t category = SOLAR_OS_EXPANSION_CATEGORY_AUDIO;
          category < SOLAR_OS_EXPANSION_CATEGORY_COUNT;
          category++) {
-        const char *after = NULL;
         solar_os_expansion_driver_t driver;
-        while (expansion_next_driver_in_category(category, after, &driver)) {
+        if (!expansion_next_driver_in_category(category, NULL, &driver)) {
+            continue;
+        }
+        if (printed_category) {
+            solar_os_shell_io_put_char(term, '\n');
+        }
+        solar_os_shell_io_printf_bold(
+            term, "%s\n", solar_os_expansion_category_name(category));
+        solar_os_shell_io_printf(term,
+                                 "  %-*s %-5s %-6s %s\n",
+                                 (int)driver_width,
+                                 "DRIVER",
+                                 "PROBE",
+                                 "BUS",
+                                 "SUMMARY");
+
+        const char *after;
+        do {
             solar_os_shell_io_printf(
                 term,
-                "%-*s %-*s %-5s %-6s %s%s\n",
-                (int)category_width,
-                solar_os_expansion_category_name(category),
+                "  %-*s %-5s %-6s %s%s\n",
                 (int)driver_width,
                 driver.name,
                 driver.probe_supported ? "yes" : "no",
@@ -477,7 +477,8 @@ static void expansion_print_drivers(solar_os_shell_io_t *term)
                 driver.summary,
                 solar_os_expansion_driver_supported(driver.name) ? "" : " (unsupported)");
             after = driver.name;
-        }
+        } while (expansion_next_driver_in_category(category, after, &driver));
+        printed_category = true;
     }
 }
 

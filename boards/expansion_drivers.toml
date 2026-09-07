@@ -21,7 +21,7 @@ required = true
 allowed = [0x5f]
 
 [drivers.tca8418]
-summary = "4x10 matrix keyboard (T-LoRa-Pager)"
+summary = "4x10 matrix keyboard"
 package = "tca8418"
 targets = ["esp32s3"]
 capabilities = ["i2c", "pwm"]
@@ -947,7 +947,7 @@ kind = "gpio"
 hint = "gpio"
 
 [drivers.sx1262]
-summary = "SX1262 LoRa/(G)FSK radio (T-LoRa-Pager)"
+summary = "SX1262 LoRa/(G)FSK radio"
 package = "sx1262"
 targets = ["esp32s3"]
 capabilities = ["spi"]
@@ -1001,7 +1001,7 @@ hint = "gpio"
 required = true
 
 [drivers.bq27220]
-summary = "BQ27220 fuel gauge (T-LoRa-Pager)"
+summary = "BQ27220 fuel gauge"
 package = "bq27220"
 targets = ["esp32s3"]
 capabilities = ["i2c"]
