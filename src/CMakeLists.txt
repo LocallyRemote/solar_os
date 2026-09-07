@@ -249,10 +249,14 @@ endif()
 string(REPLACE ";" " " SOLAR_OS_BOARD_REQUIRED_PACKAGE_LIST
     "${SOLAR_OS_BOARD_REQUIRED_PACKAGES}"
 )
+if(NOT DEFINED SOLAR_OS_FLAVOR_NAME_OVERRIDE)
+    set(SOLAR_OS_FLAVOR_NAME_OVERRIDE "")
+endif()
 execute_process(
     COMMAND "${Python3_EXECUTABLE}"
             "${SOLAR_OS_PROJECT_DIR}/scripts/generate_flavor_config.py"
             "--input" "${SOLAR_OS_FLAVOR_INPUT}"
+            "--name-override" "${SOLAR_OS_FLAVOR_NAME_OVERRIDE}"
             "--packages" "${SOLAR_OS_PACKAGE_CATALOG}"
             "--board-capabilities" "${SOLAR_OS_BOARD_AVAILABLE_CAPABILITY_LIST}"
             "--board-required-packages" "${SOLAR_OS_BOARD_REQUIRED_PACKAGE_LIST}"
