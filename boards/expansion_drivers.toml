@@ -24,7 +24,7 @@ allowed = [0x5f]
 summary = "4x10 matrix keyboard (T-LoRa-Pager)"
 package = "tca8418"
 targets = ["esp32s3"]
-capabilities = ["i2c"]
+capabilities = ["i2c", "pwm"]
 default_name = "keyboard0"
 
 [[drivers.tca8418.bindings]]
@@ -47,7 +47,7 @@ hint = "gpio"
 
 [[drivers.tca8418.bindings]]
 key = "backlight"
-kind = "gpio"
+kind = "pwm"
 hint = "gpio"
 
 [drivers.cl32-core]

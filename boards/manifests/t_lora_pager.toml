@@ -111,7 +111,7 @@ host = "SPI2_HOST"
 sclk = 35
 miso = 33
 mosi = 34
-cs = [38, 21, 36]
+cs = [38, 21, 36, 9]
 max_transfer_size = 4096
 
 [[buses]]
@@ -254,7 +254,6 @@ connector = "EXT"
 position = 9
 row = 1
 column = 2
-gpio = 9
 kind = "control"
 label = "CE (XL9555 P1.1, not ESP32 GPIO9)"
 [[connectors]]

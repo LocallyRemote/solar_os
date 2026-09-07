@@ -4409,7 +4409,8 @@ static bool python_expansion_key_known(const char *key)
 {
     static const char *const keys[] = {
         "spi", "cs", "ce", "i2c", "addr", "uart", "ps2", "gpio", "irq", "reset",
-        "rst", "data", "bck", "din", "rck", "dc", "busy", "adc", "pwm",
+        "rst", "data", "bck", "din", "rck", "mclk", "ws", "dout", "dc",
+        "busy", "adc", "pwm", "backlight", "a", "b",
         "count", "keys", "x", "y", "min", "center", "max", "deadzone",
     };
     for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
@@ -4620,6 +4621,9 @@ static mp_obj_t solaros_expansion_attach(mp_obj_t driver_obj,
         {"busy", "busy", SOLAR_OS_EXPANSION_BINDING_GPIO},
         {"adc", "adc", SOLAR_OS_EXPANSION_BINDING_ADC},
         {"pwm", "pwm", SOLAR_OS_EXPANSION_BINDING_PWM},
+        {"backlight", "backlight", SOLAR_OS_EXPANSION_BINDING_PWM},
+        {"a", "a", SOLAR_OS_EXPANSION_BINDING_GPIO},
+        {"b", "b", SOLAR_OS_EXPANSION_BINDING_GPIO},
     };
     if (python_get_dict_obj(config_obj, "reset", false) != MP_OBJ_NULL &&
         python_get_dict_obj(config_obj, "rst", false) != MP_OBJ_NULL) {

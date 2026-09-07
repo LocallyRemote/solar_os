@@ -54,6 +54,29 @@ class RuntimeBoundaryTest(unittest.TestCase):
         self.assertIn("static StaticSemaphore_t devices_mutex_storage;", source)
         self.assertNotIn("portENTER_CRITICAL(&devices_lock)", source)
 
+    def test_t_lora_devices_preserve_registered_resources_on_detach(self):
+        keyboard = (ROOT / "src/services/solar_os_tca8418.c").read_text(
+            encoding="utf-8"
+        )
+        radio = (ROOT / "src/services/solar_os_sx1262.c").read_text(
+            encoding="utf-8"
+        )
+
+        clear_keyboard = keyboard.split("static void clear_device", 1)[1].split(
+            "esp_err_t solar_os_tca8418_attach", 1
+        )[0]
+        self.assertIn("pwm_port_stop", clear_keyboard)
+        self.assertIn("backlight_active", clear_keyboard)
+
+        detach_radio = radio.split("esp_err_t solar_os_sx1262_detach", 1)[1]
+        self.assertIn(
+            "ESP_RETURN_ON_ERROR(solar_os_radio_unregister(name)", detach_radio
+        )
+        self.assertLess(
+            detach_radio.index("solar_os_radio_unregister(name)"),
+            detach_radio.index("clear_device(device)"),
+        )
+
     def test_telnet_uses_an_external_listener_and_internal_shell_stack(self):
         telnetd = (ROOT / "src/jobs/solar_os_telnetd_job.c").read_text(
             encoding="utf-8"

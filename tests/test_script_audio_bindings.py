@@ -85,6 +85,7 @@ class ScriptAudioBindingsTest(unittest.TestCase):
 
     def test_python_and_lua_accept_i2s_capture_pins(self):
         for source in (PYTHON_SOURCE, LUA_SOURCE):
+            known_keys = source.split("expansion_key_known", 1)[1].split("};", 1)[0]
             self.assertIn(
                 '{"mclk", "mclk", SOLAR_OS_EXPANSION_BINDING_GPIO}', source
             )
@@ -94,6 +95,20 @@ class ScriptAudioBindingsTest(unittest.TestCase):
             self.assertIn(
                 '{"dout", "dout", SOLAR_OS_EXPANSION_BINDING_GPIO}', source
             )
+            for key in ("mclk", "ws", "dout"):
+                self.assertIn(f'"{key}"', known_keys)
+
+    def test_python_and_lua_accept_t_lora_device_pins(self):
+        expected = (
+            '{"backlight", "backlight", SOLAR_OS_EXPANSION_BINDING_PWM}',
+            '{"a", "a", SOLAR_OS_EXPANSION_BINDING_GPIO}',
+            '{"b", "b", SOLAR_OS_EXPANSION_BINDING_GPIO}',
+        )
+        for source in (PYTHON_SOURCE, LUA_SOURCE):
+            known_keys = source.split("expansion_key_known", 1)[1].split("};", 1)[0]
+            for key, binding in zip(("backlight", "a", "b"), expected):
+                self.assertIn(f'"{key}"', known_keys)
+                self.assertIn(binding, source)
 
 
 if __name__ == "__main__":

@@ -295,7 +295,7 @@ esp_err_t solar_os_sx1262_detach(const char *name)
         return ESP_ERR_NOT_FOUND;
     }
 
-    (void)solar_os_radio_unregister(name);
+    ESP_RETURN_ON_ERROR(solar_os_radio_unregister(name), TAG, "radio is in use");
     (void)sx1262_set_state(&device->radio, SOLAR_OS_RADIO_STATE_SLEEP);
     clear_device(device);
     return ESP_OK;

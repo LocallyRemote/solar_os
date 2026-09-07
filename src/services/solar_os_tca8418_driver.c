@@ -5,13 +5,13 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
     {.key = "i2c", .value_hint = "bus", .kind = SOLAR_OS_EXPANSION_BINDING_I2C_BUS, .required = true},
     {.key = "addr", .value_hint = "0x34", .kind = SOLAR_OS_EXPANSION_BINDING_I2C_ADDRESS, .required = true, .allowed_values = addresses, .allowed_value_count = sizeof(addresses) / sizeof(addresses[0])},
     {.key = "irq", .value_hint = "gpio", .role = "irq", .kind = SOLAR_OS_EXPANSION_BINDING_GPIO, .required = false},
-    {.key = "backlight", .value_hint = "gpio", .role = "backlight", .kind = SOLAR_OS_EXPANSION_BINDING_GPIO, .required = false},
+    {.key = "backlight", .value_hint = "gpio", .role = "backlight", .kind = SOLAR_OS_EXPANSION_BINDING_PWM, .required = false},
 };
 
 const solar_os_expansion_driver_t solar_os_tca8418_expansion_driver = {
     .name = "tca8418",
     .summary = "TCA8418 matrix keyboard (T-LoRa-Pager)",
-    .required_capabilities = SOLAR_OS_BOARD_CAP_I2C,
+    .required_capabilities = SOLAR_OS_BOARD_CAP_I2C | SOLAR_OS_BOARD_CAP_PWM,
     .probe_supported = false,
     .binding_specs = binding_specs,
     .binding_spec_count = sizeof(binding_specs) / sizeof(binding_specs[0]),

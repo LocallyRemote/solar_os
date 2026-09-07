@@ -96,6 +96,25 @@ class BoardManifestTest(unittest.TestCase):
         self.assertIn("#define SOLAR_OS_BOARD_BUTTONS", header)
         self.assertIn(".miso_pin = GPIO_NUM_NC", header)
 
+    def test_t_lora_exposes_a_real_spi_cs_and_claims_keyboard_pwm(self) -> None:
+        board = load_board_manifest(
+            self.manifest_dir / "t_lora_pager.toml",
+            self.manifest_dir,
+        )
+        buses = {bus["name"]: bus for bus in board["buses"]}
+        self.assertEqual(buses["spi0"]["cs"], [38, 21, 36, 9])
+
+        connectors = {pin["position"]: pin for pin in board["connectors"]}
+        self.assertEqual(connectors[8]["gpio"], 9)
+        self.assertNotIn("gpio", connectors[9])
+
+        header = generate_header(board, self.drivers)
+        self.assertIn(
+            '.kind = SOLAR_OS_EXPANSION_BINDING_PWM, .role = "backlight", .value = 46',
+            header,
+        )
+        self.assertIn("tca8418", required_packages(board, self.drivers))
+
     def test_solar_term_battery_binding_matches_runtime_driver(self) -> None:
         board = load_board_manifest(
             self.manifest_dir / "solar_term.toml",

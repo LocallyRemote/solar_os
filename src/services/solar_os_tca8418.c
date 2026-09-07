@@ -77,6 +77,7 @@ typedef struct {
     char i2c_bus[SOLAR_OS_EXPANSION_TARGET_MAX];
     uint8_t address;
     int backlight_pin;
+    bool backlight_active;
     solar_os_input_source_t input_source;
     TaskHandle_t worker_task;
     bool symbol_pressed;
@@ -107,7 +108,8 @@ static esp_err_t parse_bindings(const solar_os_expansion_binding_t *bindings,
     bool have_i2c = false;
     bool have_address = false;
 
-    if (bindings == NULL || i2c_bus == NULL || address == NULL || irq_pin == NULL) {
+    if (bindings == NULL || i2c_bus == NULL || address == NULL ||
+        irq_pin == NULL || backlight_pin == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
     i2c_bus[0] = '\0';
@@ -138,7 +140,12 @@ static esp_err_t parse_bindings(const solar_os_expansion_binding_t *bindings,
                     return ESP_ERR_INVALID_ARG;
                 }
                 *irq_pin = binding->value;
-            } else if (binding_role_is(binding, "backlight")) {
+            } else {
+                return ESP_ERR_INVALID_ARG;
+            }
+            break;
+        case SOLAR_OS_EXPANSION_BINDING_PWM:
+            if (binding_role_is(binding, "backlight")) {
                 if (*backlight_pin >= 0) {
                     return ESP_ERR_INVALID_ARG;
                 }
@@ -261,8 +268,8 @@ static bool handle_special_key(solar_os_tca8418_device_t *device,
         return true;
     }
     if (device->alt_pressed && k == TCA8418_ALT_BRIGHTNESS_KEY) {
-        /* Alt+B toggles the backlight on stock firmware; brightness control
-         * is not wired up yet on this port, so just swallow the key. */
+        /* Alt+B toggles the backlight on stock firmware. The control is not
+         * implemented yet in this port, so just swallow the key. */
         return true;
     }
     return false;
@@ -356,6 +363,12 @@ static void clear_device(solar_os_tca8418_device_t *device)
     if (device->input_source != SOLAR_OS_INPUT_SOURCE_INVALID) {
         solar_os_input_source_close(device->input_source);
     }
+    if (device->backlight_active) {
+        const esp_err_t err = pwm_port_stop((gpio_num_t)device->backlight_pin);
+        if (err != ESP_OK) {
+            ESP_LOGW(TAG, "%s backlight stop failed: %s", device->name, esp_err_to_name(err));
+        }
+    }
     memset(device, 0, sizeof(*device));
     device->last_key_val = '\0';
     device->backlight_pin = -1;
@@ -392,25 +405,30 @@ esp_err_t solar_os_tca8418_attach(const char *name,
     }
 
     clear_device(&tca_device);
-    tca_device.active = true;
     tca_device.address = address;
     tca_device.last_key_val = '\0';
     tca_device.backlight_pin = backlight_pin;
     strlcpy(tca_device.name, name, sizeof(tca_device.name));
     strlcpy(tca_device.i2c_bus, i2c_bus, sizeof(tca_device.i2c_bus));
 
-    ESP_RETURN_ON_ERROR(configure_matrix(&tca_device), TAG, "matrix configuration failed");
-
-    if (backlight_pin >= 0) {
-        const esp_err_t bl_err = pwm_port_set((gpio_num_t)backlight_pin,
-                                              TCA8418_BACKLIGHT_PWM_HZ,
-                                              TCA8418_BACKLIGHT_DEFAULT_PERCENT);
-        if (bl_err != ESP_OK) {
-            ESP_LOGW(TAG, "keyboard backlight init failed: %s", esp_err_to_name(bl_err));
-        }
+    esp_err_t err = configure_matrix(&tca_device);
+    if (err != ESP_OK) {
+        clear_device(&tca_device);
+        return err;
     }
 
-    esp_err_t err = solar_os_input_keyboard_source_open(tca_device.name, true, &tca_device.input_source);
+    if (backlight_pin >= 0) {
+        err = pwm_port_set((gpio_num_t)backlight_pin,
+                           TCA8418_BACKLIGHT_PWM_HZ,
+                           TCA8418_BACKLIGHT_DEFAULT_PERCENT);
+        if (err != ESP_OK) {
+            clear_device(&tca_device);
+            return err;
+        }
+        tca_device.backlight_active = true;
+    }
+
+    err = solar_os_input_keyboard_source_open(tca_device.name, true, &tca_device.input_source);
     if (err != ESP_OK) {
         clear_device(&tca_device);
         return err;
@@ -426,6 +444,7 @@ esp_err_t solar_os_tca8418_attach(const char *name,
         clear_device(&tca_device);
         return ESP_ERR_NO_MEM;
     }
+    tca_device.active = true;
 
     ESP_LOGI(TAG, "%s attached on %s address 0x%02x", name, i2c_bus, address);
     return ESP_OK;
