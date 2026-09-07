@@ -269,8 +269,8 @@ static esp_err_t register_auxiliary(solar_os_ssd1683_device_t *device)
     strlcpy(target.driver, "ssd1683", sizeof(target.driver));
     strlcpy(target.controller, "UC8176", sizeof(target.controller));
     strlcpy(target.role, "aux", sizeof(target.role));
-    target.width = 400;
-    target.height = 300;
+    target.width = u8g2_GetDisplayWidth(device->display.u8g2);
+    target.height = u8g2_GetDisplayHeight(device->display.u8g2);
     target.ready = true;
     target.u8g2 = device->display.u8g2;
     target.controller_context = &device->driver;
@@ -324,14 +324,15 @@ esp_err_t solar_os_ssd1683_attach(const char *name,
 
     device->active = true;
     device->primary = strcmp(name, SOLAR_OS_DISPLAY_PRIMARY_TARGET) == 0;
+    u8g2_t *const u8g2 = epd_ssd1683_get_u8g2(&device->driver);
     device->display = (solar_os_board_display_t) {
         .ops = &display_ops,
         .driver = &device->driver,
         .driver_name = "ssd1683",
-        .u8g2 = epd_ssd1683_get_u8g2(&device->driver),
+        .u8g2 = u8g2,
         .controller = "SSD1683",
-        .width = 400,
-        .height = 300,
+        .width = u8g2_GetDisplayWidth(u8g2),
+        .height = u8g2_GetDisplayHeight(u8g2),
         .ready = true,
     };
     ret = device->primary ?

@@ -865,7 +865,7 @@ The expansion API mirrors the `expansion` shell lifecycle when the expansion
 service is compiled.
 
 - `drivers()`: return compiled driver dictionaries with `name`, `summary`,
-  `required_capabilities`, `probe_supported`, and `supported`.
+  `category`, `required_capabilities`, `probe_supported`, and `supported`.
 - `devices()`: return active device dictionaries with `name`, `driver`,
   `origin` (`board` or `runtime`), `ready`, `autostart`, `detachable`, and
   `bindings`. Each normalized binding contains `kind`, `role`, `target`,

@@ -85,8 +85,8 @@ esp_err_t solar_os_virtual_display_create(const char *name,
     strlcpy(target.source, "virtual", sizeof(target.source));
     strlcpy(target.driver, "framebuffer", sizeof(target.driver));
     strlcpy(target.role, "remote", sizeof(target.role));
-    target.width = SOLAR_OS_VIRTUAL_DISPLAY_WIDTH;
-    target.height = SOLAR_OS_VIRTUAL_DISPLAY_HEIGHT;
+    target.width = u8g2_GetDisplayWidth(&created->u8g2);
+    target.height = u8g2_GetDisplayHeight(&created->u8g2);
     target.ready = true;
     target.black_is_one = false;
     target.u8g2 = &created->u8g2;

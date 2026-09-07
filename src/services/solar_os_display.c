@@ -535,6 +535,8 @@ esp_err_t solar_os_display_register_target(const solar_os_display_target_t *targ
         target->width == 0 ||
         target->height == 0 ||
         target->u8g2 == NULL ||
+        target->width != u8g2_GetDisplayWidth(target->u8g2) ||
+        target->height != u8g2_GetDisplayHeight(target->u8g2) ||
         u8g2_GetBufferPtr(target->u8g2) == NULL ||
         (has_any_surface_callback &&
          (target->surface_formats == 0U || target->surface_context == NULL ||

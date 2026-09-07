@@ -6,6 +6,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_ps2_keyboard_expansion_driver = {
     .name = "ps2-keyboard",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_INPUT,
     .summary = "PS/2 keyboard",
     .required_capabilities = SOLAR_OS_BOARD_CAP_EXPANSION_GPIO,
     .binding_specs = binding_specs,

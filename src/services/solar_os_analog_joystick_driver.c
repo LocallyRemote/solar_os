@@ -11,6 +11,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_analog_joystick_expansion_driver = {
     .name = "analog-joystick",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_INPUT,
     .summary = "two-axis joystick",
     .binding_specs = binding_specs,
     .binding_spec_count = sizeof(binding_specs) / sizeof(binding_specs[0]),

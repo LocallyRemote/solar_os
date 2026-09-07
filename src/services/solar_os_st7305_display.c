@@ -236,8 +236,8 @@ static esp_err_t register_auxiliary(st7305_device_t *attached)
     strlcpy(target.driver, "st7305", sizeof(target.driver));
     strlcpy(target.controller, "ST7305", sizeof(target.controller));
     strlcpy(target.role, "aux", sizeof(target.role));
-    target.width = rlcd_st7305_width(&attached->driver);
-    target.height = rlcd_st7305_height(&attached->driver);
+    target.width = u8g2_GetDisplayWidth(attached->display.u8g2);
+    target.height = u8g2_GetDisplayHeight(attached->display.u8g2);
     target.ready = true;
     target.frame_formats = SOLAR_OS_DISPLAY_FORMAT_MONO1_BIT;
     target.preferred_stream_fps = 25;
@@ -290,14 +290,15 @@ static esp_err_t attach(const char *name,
         return ret;
     }
     strlcpy(device->name, name, sizeof(device->name));
+    u8g2_t *const u8g2 = rlcd_st7305_get_u8g2(&device->driver);
     device->display = (solar_os_board_display_t) {
         .ops = &display_ops,
         .driver = &device->driver,
         .driver_name = "st7305",
-        .u8g2 = rlcd_st7305_get_u8g2(&device->driver),
+        .u8g2 = u8g2,
         .controller = "ST7305",
-        .width = rlcd_st7305_width(&device->driver),
-        .height = rlcd_st7305_height(&device->driver),
+        .width = u8g2_GetDisplayWidth(u8g2),
+        .height = u8g2_GetDisplayHeight(u8g2),
         .frame_formats = SOLAR_OS_DISPLAY_FORMAT_MONO1_BIT,
         .preferred_stream_fps = 25,
         .max_stream_pixels_per_second = 2400000U,
@@ -363,6 +364,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_st7305_expansion_driver = {
     .name = "st7305",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_DISPLAY,
     .summary = "ST7305 reflective LCD",
     .required_capabilities = SOLAR_OS_BOARD_CAP_GFX |
                              SOLAR_OS_BOARD_CAP_EXPANSION_SPI |

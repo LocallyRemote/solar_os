@@ -347,6 +347,42 @@ def validate_board(board: dict[str, Any], drivers: dict[str, DriverDef]) -> None
     if ("psram" in capabilities) != (psram_bytes > 0):
         raise ManifestError("PSRAM capability and build.psram_bytes disagree")
 
+    defines = board.get("defines", {})
+    if not isinstance(defines, dict):
+        raise ManifestError("defines must be a table")
+    if "display" in capabilities:
+        logical_names = (
+            "SOLAR_OS_BOARD_DISPLAY_CONTROLLER",
+            "SOLAR_OS_BOARD_DISPLAY_WIDTH",
+            "SOLAR_OS_BOARD_DISPLAY_HEIGHT",
+        )
+        missing = [name for name in logical_names if not defines.get(name)]
+        if missing:
+            raise ManifestError(
+                "display boards require logical geometry: " + ", ".join(missing)
+            )
+
+    native_width = defines.get("SOLAR_OS_BOARD_DISPLAY_NATIVE_WIDTH")
+    native_height = defines.get("SOLAR_OS_BOARD_DISPLAY_NATIVE_HEIGHT")
+    if (native_width is None) != (native_height is None):
+        raise ManifestError("display native width and height must be defined together")
+    rotation = defines.get("SOLAR_OS_BOARD_DISPLAY_U8G2_ROTATION")
+    if native_width is not None and rotation in {"U8G2_R0", "U8G2_R1", "U8G2_R2", "U8G2_R3"}:
+        try:
+            native = (int(native_width, 0), int(native_height, 0))
+            logical = (
+                int(defines["SOLAR_OS_BOARD_DISPLAY_WIDTH"], 0),
+                int(defines["SOLAR_OS_BOARD_DISPLAY_HEIGHT"], 0),
+            )
+        except (KeyError, TypeError, ValueError):
+            pass
+        else:
+            expected = (native[1], native[0]) if rotation in {"U8G2_R1", "U8G2_R3"} else native
+            if logical != expected:
+                raise ManifestError(
+                    "logical display geometry does not match native geometry and rotation"
+                )
+
     header = board.get("header", {})
     if not isinstance(header, dict):
         raise ManifestError("header must be a table")

@@ -35,6 +35,40 @@ class BoardManifestTest(unittest.TestCase):
                 board = load_board_manifest(path, self.manifest_dir)
                 validate_board(board, self.drivers)
 
+    def test_display_manifests_define_logical_geometry(self) -> None:
+        required = {
+            "SOLAR_OS_BOARD_DISPLAY_CONTROLLER",
+            "SOLAR_OS_BOARD_DISPLAY_WIDTH",
+            "SOLAR_OS_BOARD_DISPLAY_HEIGHT",
+        }
+        for path in self.manifest_dir.glob("*.toml"):
+            board = load_board_manifest(path, self.manifest_dir)
+            if "display" not in board["build"]["capabilities"]:
+                continue
+            with self.subTest(path=path.name):
+                self.assertLessEqual(required, set(board["defines"]))
+
+    def test_native_display_geometry_must_match_logical_rotation(self) -> None:
+        board = load_board_manifest(
+            self.manifest_dir / "t_lora_pager.toml",
+            self.manifest_dir,
+        )
+        invalid = deepcopy(board)
+        invalid["defines"]["SOLAR_OS_BOARD_DISPLAY_HEIGHT"] = "320"
+        with self.assertRaisesRegex(
+            ManifestError,
+            "logical display geometry does not match native geometry and rotation",
+        ):
+            validate_board(invalid, self.drivers)
+
+        incomplete = deepcopy(board)
+        del incomplete["defines"]["SOLAR_OS_BOARD_DISPLAY_NATIVE_HEIGHT"]
+        with self.assertRaisesRegex(
+            ManifestError,
+            "display native width and height must be defined together",
+        ):
+            validate_board(incomplete, self.drivers)
+
     def test_both_mcu_families_have_a_base_profile(self) -> None:
         bases = available_base_profiles(self.manifest_dir)
         self.assertTrue(bases["esp32s3"])
@@ -95,6 +129,25 @@ class BoardManifestTest(unittest.TestCase):
         self.assertIn('#include "solar_os_buttons.h"', header)
         self.assertIn("#define SOLAR_OS_BOARD_BUTTONS", header)
         self.assertIn(".miso_pin = GPIO_NUM_NC", header)
+
+    def test_t_lora_exposes_a_real_spi_cs_and_claims_keyboard_pwm(self) -> None:
+        board = load_board_manifest(
+            self.manifest_dir / "t_lora_pager.toml",
+            self.manifest_dir,
+        )
+        buses = {bus["name"]: bus for bus in board["buses"]}
+        self.assertEqual(buses["spi0"]["cs"], [38, 21, 36, 9])
+
+        connectors = {pin["position"]: pin for pin in board["connectors"]}
+        self.assertEqual(connectors[8]["gpio"], 9)
+        self.assertNotIn("gpio", connectors[9])
+
+        header = generate_header(board, self.drivers)
+        self.assertIn(
+            '.kind = SOLAR_OS_EXPANSION_BINDING_PWM, .role = "backlight", .value = 46',
+            header,
+        )
+        self.assertIn("tca8418", required_packages(board, self.drivers))
 
     def test_solar_term_battery_binding_matches_runtime_driver(self) -> None:
         board = load_board_manifest(

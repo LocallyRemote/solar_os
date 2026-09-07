@@ -69,9 +69,22 @@ typedef esp_err_t (*solar_os_expansion_attach_fn_t)(const char *name,
                                                     size_t binding_count);
 typedef esp_err_t (*solar_os_expansion_detach_fn_t)(const char *name);
 
+typedef enum {
+    SOLAR_OS_EXPANSION_CATEGORY_AUDIO,
+    SOLAR_OS_EXPANSION_CATEGORY_DISPLAY,
+    SOLAR_OS_EXPANSION_CATEGORY_INPUT,
+    SOLAR_OS_EXPANSION_CATEGORY_POWER,
+    SOLAR_OS_EXPANSION_CATEGORY_RADIO,
+    SOLAR_OS_EXPANSION_CATEGORY_SENSOR,
+    SOLAR_OS_EXPANSION_CATEGORY_STORAGE,
+    SOLAR_OS_EXPANSION_CATEGORY_UTILITY,
+    SOLAR_OS_EXPANSION_CATEGORY_COUNT,
+} solar_os_expansion_category_t;
+
 typedef struct {
     const char *name;
     const char *summary;
+    solar_os_expansion_category_t category;
     solar_os_board_capabilities_t required_capabilities;
     bool probe_supported;
     bool early;
@@ -113,6 +126,7 @@ bool solar_os_expansion_available(void);
 size_t solar_os_expansion_driver_count(void);
 bool solar_os_expansion_get_driver(size_t index, solar_os_expansion_driver_t *driver);
 bool solar_os_expansion_driver_supported(const char *name);
+const char *solar_os_expansion_category_name(solar_os_expansion_category_t category);
 esp_err_t solar_os_expansion_validate_bindings(
     const char *driver,
     const solar_os_expansion_binding_t *bindings,

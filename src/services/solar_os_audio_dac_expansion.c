@@ -40,6 +40,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_esp32_dac_expansion_driver = {
     .name = "esp32-dac",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_AUDIO,
     .summary = "ESP32 internal DAC audio",
     .required_capabilities = SOLAR_OS_BOARD_CAP_EXPANSION_GPIO,
     .binding_specs = binding_specs,

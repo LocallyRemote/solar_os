@@ -18,6 +18,7 @@
 static const solar_os_expansion_driver_t manual_expansion_driver = {
     .name = "manual",
     .summary = "custom resource map",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_UTILITY,
     .allow_unlisted_bindings = true,
 };
 
@@ -607,6 +608,22 @@ bool solar_os_expansion_get_driver(size_t index, solar_os_expansion_driver_t *dr
     }
     *driver = *expansion_drivers[index];
     return true;
+}
+
+const char *solar_os_expansion_category_name(solar_os_expansion_category_t category)
+{
+    static const char *const names[SOLAR_OS_EXPANSION_CATEGORY_COUNT] = {
+        [SOLAR_OS_EXPANSION_CATEGORY_AUDIO] = "Audio",
+        [SOLAR_OS_EXPANSION_CATEGORY_DISPLAY] = "Display",
+        [SOLAR_OS_EXPANSION_CATEGORY_INPUT] = "Input",
+        [SOLAR_OS_EXPANSION_CATEGORY_POWER] = "Power",
+        [SOLAR_OS_EXPANSION_CATEGORY_RADIO] = "Radio",
+        [SOLAR_OS_EXPANSION_CATEGORY_SENSOR] = "Sensor",
+        [SOLAR_OS_EXPANSION_CATEGORY_STORAGE] = "Storage",
+        [SOLAR_OS_EXPANSION_CATEGORY_UTILITY] = "Utility",
+    };
+    return (unsigned)category < SOLAR_OS_EXPANSION_CATEGORY_COUNT ?
+        names[category] : "Utility";
 }
 
 bool solar_os_expansion_driver_supported(const char *name)

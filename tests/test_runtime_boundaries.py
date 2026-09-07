@@ -54,6 +54,73 @@ class RuntimeBoundaryTest(unittest.TestCase):
         self.assertIn("static StaticSemaphore_t devices_mutex_storage;", source)
         self.assertNotIn("portENTER_CRITICAL(&devices_lock)", source)
 
+    def test_t_lora_devices_preserve_registered_resources_on_detach(self):
+        keyboard = (ROOT / "src/services/solar_os_tca8418.c").read_text(
+            encoding="utf-8"
+        )
+        radio = (ROOT / "src/services/solar_os_sx1262.c").read_text(
+            encoding="utf-8"
+        )
+
+        clear_keyboard = keyboard.split("static void clear_device", 1)[1].split(
+            "esp_err_t solar_os_tca8418_attach", 1
+        )[0]
+        self.assertIn("pwm_port_stop", clear_keyboard)
+        self.assertIn("backlight_active", clear_keyboard)
+
+        detach_radio = radio.split("esp_err_t solar_os_sx1262_detach", 1)[1]
+        self.assertIn(
+            "ESP_RETURN_ON_ERROR(solar_os_radio_unregister(name)", detach_radio
+        )
+        self.assertLess(
+            detach_radio.index("solar_os_radio_unregister(name)"),
+            detach_radio.index("clear_device(device)"),
+        )
+
+    def test_expansion_drivers_declare_categories(self):
+        descriptor_sources = []
+        for path in (ROOT / "src/services").glob("*.c"):
+            source = path.read_text(encoding="utf-8")
+            if "const solar_os_expansion_driver_t" in source:
+                descriptor_sources.append((path, source))
+        self.assertTrue(descriptor_sources)
+        for path, source in descriptor_sources:
+            descriptor_count = len(re.findall(
+                r"(?:static )?const solar_os_expansion_driver_t\s+\w+\s*=\s*\{",
+                source,
+            ))
+            if descriptor_count == 0:
+                continue
+            category_count = source.count(
+                ".category = SOLAR_OS_EXPANSION_CATEGORY_"
+            )
+            self.assertEqual(category_count, descriptor_count, path.name)
+
+    def test_expansion_driver_command_orders_explicit_categories(self):
+        shell = (ROOT / "src/shell/solar_os_shell_expansion.c").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn('"CATEGORY"', shell)
+        self.assertIn("solar_os_shell_io_printf_bold(", shell)
+        self.assertIn('"  %-*s %-5s %-6s %s\\n"', shell)
+        self.assertIn("expansion_next_driver_in_category", shell)
+        self.assertIn("strcmp(driver.name, next->name) < 0", shell)
+        self.assertIn(
+            "solar_os_expansion_category_name(category)",
+            shell,
+        )
+
+    def test_rotary_encoder_is_interrupt_driven_without_iram_handler(self):
+        rotary = (ROOT / "src/services/solar_os_rotary_encoder.c").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("GPIO_INTR_ANYEDGE", rotary)
+        self.assertEqual(rotary.count("gpio_isr_handler_add("), 2)
+        self.assertIn("xQueueSendFromISR", rotary)
+        self.assertIn("xQueueReceive", rotary)
+        self.assertNotIn("ROTARY_POLL_MS", rotary)
+        self.assertNotIn("IRAM_ATTR rotary_gpio_isr", rotary)
+
     def test_telnet_uses_an_external_listener_and_internal_shell_stack(self):
         telnetd = (ROOT / "src/jobs/solar_os_telnetd_job.c").read_text(
             encoding="utf-8"
@@ -369,6 +436,31 @@ class RuntimeBoundaryTest(unittest.TestCase):
         self.assertIn("if (lines->frame->clear_background)", tft)
         self.assertIn("display->config.width - 1U", tft)
         self.assertIn("display->config.height - 1U", tft)
+
+    def test_display_targets_use_u8g2_logical_geometry(self):
+        display = (ROOT / "src/services/solar_os_display.c").read_text(
+            encoding="utf-8"
+        )
+        board_display = (
+            ROOT / "src/board/solar_os_board_display_expansion.c"
+        ).read_text(encoding="utf-8")
+        tft = (ROOT / "src/services/solar_os_tft_display.c").read_text(
+            encoding="utf-8"
+        )
+
+        for source in (display, board_display):
+            self.assertIn(
+                "width != u8g2_GetDisplayWidth", source
+            )
+            self.assertIn(
+                "height != u8g2_GetDisplayHeight", source
+            )
+        registered_geometry = tft.split(
+            "device->display = (solar_os_board_display_t)", 1
+        )[1].split(".surface_formats", 1)[0]
+        self.assertIn(".width = u8g2_GetDisplayWidth(u8g2)", registered_geometry)
+        self.assertIn(".height = u8g2_GetDisplayHeight(u8g2)", registered_geometry)
+        self.assertNotIn("SOLAR_OS_BOARD_DISPLAY_NATIVE_WIDTH", registered_geometry)
 
     def test_foreground_apps_use_one_class_lifecycle(self):
         sources = list((ROOT / "src/apps").glob("*.c"))

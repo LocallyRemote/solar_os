@@ -4090,6 +4090,10 @@ static int solua_expansion_drivers(lua_State *L)
         lua_newtable(L);
         solua_set_str(L, -1, "name", driver.name);
         solua_set_str(L, -1, "summary", driver.summary);
+        solua_set_str(L,
+                      -1,
+                      "category",
+                      solar_os_expansion_category_name(driver.category));
         solua_set_int(L,
                       -1,
                       "required_capabilities",
@@ -4138,7 +4142,8 @@ static bool solua_expansion_key_known(const char *key)
 {
     static const char *const keys[] = {
         "spi", "cs", "ce", "i2c", "addr", "uart", "ps2", "gpio", "irq", "reset",
-        "rst", "data", "bck", "din", "rck", "dc", "busy", "adc", "pwm",
+        "rst", "data", "bck", "din", "rck", "mclk", "ws", "dout", "dc",
+        "busy", "adc", "pwm", "backlight", "a", "b",
         "count", "keys", "x", "y", "min", "center", "max", "deadzone",
     };
     for (size_t i = 0; i < sizeof(keys) / sizeof(keys[0]); i++) {
@@ -4372,6 +4377,9 @@ static int solua_expansion_attach(lua_State *L)
         {"busy", "busy", SOLAR_OS_EXPANSION_BINDING_GPIO},
         {"adc", "adc", SOLAR_OS_EXPANSION_BINDING_ADC},
         {"pwm", "pwm", SOLAR_OS_EXPANSION_BINDING_PWM},
+        {"backlight", "backlight", SOLAR_OS_EXPANSION_BINDING_PWM},
+        {"a", "a", SOLAR_OS_EXPANSION_BINDING_GPIO},
+        {"b", "b", SOLAR_OS_EXPANSION_BINDING_GPIO},
     };
     int reset = 0;
     int rst = 0;

@@ -8,6 +8,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_ssd1306_expansion_driver = {
     .name = "ssd1306",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_DISPLAY,
     .summary = "128x64 I2C OLED",
     .required_capabilities = SOLAR_OS_BOARD_CAP_EXPANSION_I2C,
     .probe_supported = true,
@@ -19,6 +20,7 @@ const solar_os_expansion_driver_t solar_os_ssd1306_expansion_driver = {
 
 const solar_os_expansion_driver_t solar_os_sh1106_expansion_driver = {
     .name = "sh1106",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_DISPLAY,
     .summary = "128x64 I2C OLED",
     .required_capabilities = SOLAR_OS_BOARD_CAP_EXPANSION_I2C,
     .probe_supported = true,

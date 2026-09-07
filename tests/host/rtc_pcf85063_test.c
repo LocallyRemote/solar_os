@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include "freertos/task.h"
 #include "rtc_pcf85063.h"
 
 typedef struct {
@@ -13,6 +14,12 @@ typedef struct {
 static uint8_t registers[0x12];
 static write_record_t writes[16];
 static size_t write_count;
+static TickType_t delayed_ticks;
+
+void vTaskDelay(TickType_t ticks)
+{
+    delayed_ticks += ticks;
+}
 
 size_t strlcpy(char *dst, const char *src, size_t size)
 {
@@ -61,6 +68,7 @@ static void reset_bus(void)
     memset(registers, 0, sizeof(registers));
     memset(writes, 0, sizeof(writes));
     write_count = 0;
+    delayed_ticks = 0;
 }
 
 int main(void)
@@ -69,6 +77,14 @@ int main(void)
         .bus = "i2c0",
         .address = RTC_PCF85063_ADDRESS,
     };
+
+    reset_bus();
+    registers[0x00] = 0x80;
+    rtc_pcf85063_t initialized = {0};
+    assert(rtc_pcf85063_init_device(&initialized, "i2c0", RTC_PCF85063_ADDRESS) == ESP_OK);
+    assert(write_count == 1);
+    assert(writes[0].reg == 0x00 && writes[0].data[0] == 0x58);
+    assert(delayed_ticks == pdMS_TO_TICKS(2));
 
     reset_bus();
     registers[0x01] = 0xc8;
