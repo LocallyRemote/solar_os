@@ -64,6 +64,7 @@ typedef struct {
     bool configured;
     solar_os_gpio_mode_t mode;
     solar_os_gpio_pull_t pull;
+    bool output_level;
 } gpio_slot_t;
 
 static gpio_slot_t gpio_slots[] = SOLAR_OS_BOARD_GPIO_SLOTS;
@@ -228,9 +229,16 @@ bool solar_os_gpio_get_pin_info(size_t index, solar_os_gpio_pin_info_t *info)
 #endif
     const bool ours = claimed && gpio_claim_is_ours(slot->pin, NULL);
     bool level = false;
-    const esp_err_t level_err = slot->configured && (!claimed || ours)
-        ? gpio_port_read((gpio_num_t)slot->pin, &level)
-        : ESP_ERR_INVALID_STATE;
+    esp_err_t level_err = ESP_ERR_INVALID_STATE;
+    if (slot->configured && (!claimed || ours)) {
+        if (slot->mode == SOLAR_OS_GPIO_MODE_OUTPUT) {
+            /* Output-only GPIOs do not enable the input path on ESP-IDF. */
+            level = slot->output_level;
+            level_err = ESP_OK;
+        } else {
+            level_err = gpio_port_read((gpio_num_t)slot->pin, &level);
+        }
+    }
 
     *info = (solar_os_gpio_pin_info_t) {
         .pin = slot->pin,
@@ -373,7 +381,11 @@ esp_err_t solar_os_gpio_write(int pin, bool level)
         }
     }
 
-    return gpio_port_write((gpio_num_t)pin, level);
+    const esp_err_t err = gpio_port_write((gpio_num_t)pin, level);
+    if (err == ESP_OK) {
+        slot->output_level = level;
+    }
+    return err;
 #endif
 }
 
