@@ -1443,7 +1443,7 @@ void solar_os_shell_cmd_ble(solar_os_context_t *ctx, int argc, char **argv)
     if (strcmp(argv[1], "forget") == 0) {
         const esp_err_t err = solar_os_ble_keyboard_forget();
         if (err == ESP_OK) {
-            solar_os_shell_io_writeln(term, "BLE keyboard forgotten");
+            solar_os_shell_io_writeln(term, "BLE keyboard forget requested");
         } else {
             solar_os_shell_io_printf(term, "BLE forget failed: %s\n", solar_os_shell_error_text(err));
         }
