@@ -2,6 +2,7 @@
 
 const solar_os_expansion_driver_t solar_os_gpio_keys_expansion_driver = {
     .name = "gpio-keys",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_INPUT,
     .summary = "GPIO keyboard",
     .required_capabilities = SOLAR_OS_BOARD_CAP_EXPANSION_GPIO,
     .allow_unlisted_bindings = true,

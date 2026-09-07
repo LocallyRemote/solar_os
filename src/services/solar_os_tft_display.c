@@ -369,6 +369,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_ili9341_expansion_driver = {
     .name = "ili9341",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_DISPLAY,
     .summary = "320x240 color TFT",
     .required_capabilities = TFT_CAPABILITIES,
     .early = true,
@@ -380,6 +381,7 @@ const solar_os_expansion_driver_t solar_os_ili9341_expansion_driver = {
 
 const solar_os_expansion_driver_t solar_os_st7796_expansion_driver = {
     .name = "st7796",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_DISPLAY,
     .summary = "480x320 color TFT",
     .required_capabilities = TFT_CAPABILITIES,
     .early = true,

@@ -9,6 +9,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_pcm1808_expansion_driver = {
     .name = "pcm1808",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_AUDIO,
     .summary = "I2S stereo audio input",
     .required_capabilities = SOLAR_OS_BOARD_CAP_EXPANSION_I2S,
     .binding_specs = binding_specs,

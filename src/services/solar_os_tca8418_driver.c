@@ -10,6 +10,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_tca8418_expansion_driver = {
     .name = "tca8418",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_INPUT,
     .summary = "TCA8418 matrix keyboard (T-LoRa-Pager)",
     .required_capabilities = SOLAR_OS_BOARD_CAP_I2C | SOLAR_OS_BOARD_CAP_PWM,
     .probe_supported = false,

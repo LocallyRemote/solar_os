@@ -112,6 +112,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_es8311_es7210_expansion_driver = {
     .name = "es8311-es7210",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_AUDIO,
     .summary = "ES8311 output + ES7210 input",
     .required_capabilities = SOLAR_OS_BOARD_CAP_I2C |
                              SOLAR_OS_BOARD_CAP_EXPANSION_I2S,
@@ -123,6 +124,7 @@ const solar_os_expansion_driver_t solar_os_es8311_es7210_expansion_driver = {
 
 const solar_os_expansion_driver_t solar_os_es8311_duplex_expansion_driver = {
     .name = "es8311-duplex",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_AUDIO,
     .summary = "ES8311 duplex audio",
     .required_capabilities = SOLAR_OS_BOARD_CAP_I2C |
                              SOLAR_OS_BOARD_CAP_EXPANSION_I2S,

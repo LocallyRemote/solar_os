@@ -10,6 +10,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_pcf85063_expansion_driver = {
     .name = "pcf85063",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_SENSOR,
     .summary = "I2C real-time clock",
     .required_capabilities = SOLAR_OS_BOARD_CAP_I2C,
     .probe_supported = true,

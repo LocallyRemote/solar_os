@@ -8,6 +8,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_tlora_pager_core_expansion_driver = {
     .name = "tlora-pager-core",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_UTILITY,
     .summary = "T-LoRa-Pager XL9555 power sequencer",
     .required_capabilities = SOLAR_OS_BOARD_CAP_I2C,
     .probe_supported = false,

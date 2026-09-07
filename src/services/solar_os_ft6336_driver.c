@@ -11,6 +11,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_ft6336_expansion_driver = {
     .name = "ft6336",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_INPUT,
     .summary = "capacitive touch",
     .required_capabilities = SOLAR_OS_BOARD_CAP_EXPANSION_I2C | SOLAR_OS_BOARD_CAP_EXPANSION_GPIO | SOLAR_OS_BOARD_CAP_GFX,
     .probe_supported = true,

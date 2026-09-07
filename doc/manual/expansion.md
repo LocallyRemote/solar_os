@@ -3,8 +3,8 @@ id = "expansion"
 title = "Expansion drivers and attached devices"
 section = "hardware"
 summary = "Discover, attach, and detach package-gated expansion devices"
-aliases = ["devices", "drivers", "ssd1683", "epaper", "e-paper", "st7305", "ili9341", "st7796", "cvbs", "pal", "vga32", "cardkb", "keyboard", "sdmmc", "sdspi", "micro-sd", "audio-pwm", "ledc-audio", "pcm1808", "i2s-adc", "pcm5102", "pcm5102a", "i2s-dac", "es8311", "es7210", "esp32-dac", "rfm69", "rfm69h", "rfm95", "neopixel", "ws2812", "lora", "fsk", "gfsk", "msk", "gmsk", "ook"]
-keywords = "python lua expansion device driver attach detach bindings display epaper e-paper ssd1683 st7305 ili9341 st7796 cvbs pal composite vga vga32 waveshare cardkb m5stack keyboard mouse joystick pointer input i2c sd sdmmc sdspi microsd storage oled lcd sensor peripheral audio pwm ledc pcm1808 adc pcm5102 es8311 es7210 esp32 dac i2s radio rfm69 rfm69h rfm95 neopixel ws2812 rgb led strip fsk gfsk msk gmsk ook lora"
+aliases = ["devices", "drivers", "ssd1683", "epaper", "e-paper", "st7305", "ili9341", "st7796", "cvbs", "pal", "vga32", "cardkb", "keyboard", "tca8418", "rotary-encoder", "sdmmc", "sdspi", "micro-sd", "audio-pwm", "ledc-audio", "pcm1808", "i2s-adc", "pcm5102", "pcm5102a", "i2s-dac", "es8311", "es7210", "esp32-dac", "rfm69", "rfm69h", "rfm95", "sx1262", "bq27220", "neopixel", "ws2812", "lora", "fsk", "gfsk", "msk", "gmsk", "ook"]
+keywords = "python lua expansion device driver category attach detach bindings display epaper e-paper ssd1683 st7305 ili9341 st7796 cvbs pal composite vga vga32 waveshare cardkb m5stack keyboard tca8418 rotary encoder quadrature mouse joystick pointer input i2c sd sdmmc sdspi microsd storage oled lcd sensor peripheral battery fuel gauge bq27220 audio pwm ledc pcm1808 adc pcm5102 es8311 es7210 esp32 dac i2s radio rfm69 rfm69h rfm95 sx1262 neopixel ws2812 rgb led strip fsk gfsk msk gmsk ook lora"
 packages_any = ["service_expansion"]
 +++
 # Expansion drivers and attached devices
@@ -50,10 +50,12 @@ expansion devices
 display list
 ```
 
-`expansion drivers` uses compact aligned columns for the compiled driver name,
-probe support, bus type, and summary. `expansion devices` prints each attached
-device in a separate block, with its name in bold followed by origin, readiness,
-startup mode, attachment policy, and bindings.
+`expansion drivers` groups compiled drivers into Audio, Display, Input, Power,
+Radio, Sensor, Storage, and Utility categories, with driver names sorted inside
+each category. Its aligned columns also show probe support, bus type, and the
+driver summary. `expansion devices` prints each attached device in a separate
+block, with its name in bold followed by origin, readiness, startup mode,
+attachment policy, and bindings.
 
 From a script, inspect `solaros.expansion.drivers()` and
 `solaros.expansion.devices()`. A driver existing in firmware does not mean a
@@ -143,6 +145,7 @@ Other input devices follow the same lifecycle:
 
 ```text
 expansion attach gpio-keys keys0 key:UP=gpio17 key:ENTER=gpio2
+expansion attach rotary-encoder wheel0 a=gpio17 b=gpio2
 expansion bus create ps2 ps2mouse clock=gpio17 data=gpio18
 expansion attach ps2-mouse mouse0 ps2=ps2mouse
 expansion attach analog-joystick joystick0 x=adc2 y=adc4 min=0 center=1650 max=3300 deadzone=100
@@ -150,8 +153,10 @@ input status
 ```
 
 Use only bindings listed by `expansion drivers` and resources shown on the
-running board. A PS/2 mouse publishes relative pointer events. An analog
-joystick consumes two scalar streams and publishes axes, never keys.
+running board. A rotary encoder decodes interrupts from its quadrature A/B
+signals and publishes Up/Down detents; wire its independent push switch through
+`gpio-keys`. A PS/2 mouse publishes relative pointer events. An analog joystick
+consumes two scalar streams and publishes axes, never keys.
 Foreground Python and Lua applications receive those pointer and axis events
 through `solaros.input`; use `solaros.tui.getch()` for keyboard characters.
 

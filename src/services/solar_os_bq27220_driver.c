@@ -8,6 +8,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_bq27220_expansion_driver = {
     .name = "bq27220",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_POWER,
     .summary = "BQ27220 fuel gauge (T-LoRa-Pager)",
     .required_capabilities = SOLAR_OS_BOARD_CAP_I2C,
     .probe_supported = false,

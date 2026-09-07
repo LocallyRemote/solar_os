@@ -212,6 +212,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_cvbs_pal_expansion_driver = {
     .name = "cvbs-pal",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_DISPLAY,
     .summary = "PAL composite video",
     .required_capabilities = SOLAR_OS_BOARD_CAP_GFX |
                              SOLAR_OS_BOARD_CAP_EXPANSION_GPIO,

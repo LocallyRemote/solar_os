@@ -4090,6 +4090,10 @@ static int solua_expansion_drivers(lua_State *L)
         lua_newtable(L);
         solua_set_str(L, -1, "name", driver.name);
         solua_set_str(L, -1, "summary", driver.summary);
+        solua_set_str(L,
+                      -1,
+                      "category",
+                      solar_os_expansion_category_name(driver.category));
         solua_set_int(L,
                       -1,
                       "required_capabilities",

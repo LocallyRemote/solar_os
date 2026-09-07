@@ -7,6 +7,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_rotary_encoder_expansion_driver = {
     .name = "rotary-encoder",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_INPUT,
     .summary = "Quadrature rotary encoder (Up/Down per detent)",
     .required_capabilities = SOLAR_OS_BOARD_CAP_GPIO,
     .probe_supported = false,

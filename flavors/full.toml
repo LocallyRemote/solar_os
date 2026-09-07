@@ -107,3 +107,7 @@ ft6336 = true
 pcf85063 = true
 shtc3 = true
 battery_adc = true
+tca8418 = true
+sx1262 = true
+rotary_encoder = true
+bq27220 = true

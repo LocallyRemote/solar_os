@@ -11,6 +11,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_sdmmc_expansion_driver = {
     .name = "sdmmc",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_STORAGE,
     .summary = "SDMMC card",
     .required_capabilities = SOLAR_OS_BOARD_CAP_EXPANSION_GPIO,
     .probe_supported = true,

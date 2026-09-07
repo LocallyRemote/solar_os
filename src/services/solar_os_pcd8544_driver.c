@@ -9,6 +9,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_pcd8544_expansion_driver = {
     .name = "pcd8544",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_DISPLAY,
     .summary = "84x48 SPI LCD",
     .required_capabilities = SOLAR_OS_BOARD_CAP_EXPANSION_SPI | SOLAR_OS_BOARD_CAP_EXPANSION_GPIO,
     .binding_specs = binding_specs,

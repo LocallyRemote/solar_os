@@ -188,6 +188,20 @@ static void assert_device(size_t index,
 
 int main(void)
 {
+    const char *expected_categories[SOLAR_OS_EXPANSION_CATEGORY_COUNT] = {
+        "Audio", "Display", "Input", "Power",
+        "Radio", "Sensor", "Storage", "Utility",
+    };
+    for (solar_os_expansion_category_t category = SOLAR_OS_EXPANSION_CATEGORY_AUDIO;
+         category < SOLAR_OS_EXPANSION_CATEGORY_COUNT;
+         category++) {
+        assert(strcmp(solar_os_expansion_category_name(category),
+                      expected_categories[category]) == 0);
+    }
+    solar_os_expansion_driver_t manual_driver;
+    assert(solar_os_expansion_get_driver(0, &manual_driver));
+    assert(manual_driver.category == SOLAR_OS_EXPANSION_CATEGORY_UTILITY);
+
     assert(solar_os_expansion_init_early() == ESP_OK);
     assert(solar_os_expansion_device_count() == 0);
 

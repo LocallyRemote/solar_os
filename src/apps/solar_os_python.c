@@ -4360,9 +4360,12 @@ static mp_obj_t solaros_expansion_drivers(void)
         if (!solar_os_expansion_get_driver(i, &driver)) {
             continue;
         }
-        mp_obj_t item = mp_obj_new_dict(5);
+        mp_obj_t item = mp_obj_new_dict(6);
         python_dict_store_cstr(item, "name", driver.name);
         python_dict_store_cstr(item, "summary", driver.summary);
+        python_dict_store_cstr(item,
+                               "category",
+                               solar_os_expansion_category_name(driver.category));
         python_dict_store_u64(item,
                               "required_capabilities",
                               driver.required_capabilities);

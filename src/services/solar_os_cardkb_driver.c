@@ -8,6 +8,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_cardkb_expansion_driver = {
     .name = "cardkb",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_INPUT,
     .summary = "I2C keyboard",
     .required_capabilities = SOLAR_OS_BOARD_CAP_EXPANSION_I2C,
     .probe_supported = true,

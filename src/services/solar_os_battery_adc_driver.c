@@ -7,6 +7,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_battery_adc_expansion_driver = {
     .name = "battery-adc",
+    .category = SOLAR_OS_EXPANSION_CATEGORY_POWER,
     .summary = "ADC battery monitor",
     .required_capabilities = SOLAR_OS_BOARD_CAP_ADC,
     .binding_specs = binding_specs,

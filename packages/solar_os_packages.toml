@@ -551,26 +551,22 @@ members = ["tlora_pager_core"]
 
 [groups.tca8418]
 label = "TCA8418 keyboard"
-category = "Internal"
-hidden = true
+category = "Expansion hardware"
 members = ["tca8418"]
 
 [groups.sx1262]
 label = "SX1262 LoRa radio"
-category = "Internal"
-hidden = true
+category = "Expansion hardware"
 members = ["sx1262"]
 
 [groups.rotary_encoder]
 label = "Quadrature rotary encoder"
-category = "Internal"
-hidden = true
+category = "Expansion hardware"
 members = ["rotary_encoder"]
 
 [groups.bq27220]
 label = "BQ27220 fuel gauge"
-category = "Internal"
-hidden = true
+category = "Expansion hardware"
 members = ["bq27220"]
 
 [packages.core_runtime]
@@ -1240,7 +1236,7 @@ requires = ["esp_driver_i2c"]
 capabilities = ["i2c"]
 
 [packages.tca8418]
-label = "board.tca8418"
+label = "expansion.tca8418"
 targets = ["esp32s3"]
 expansion_drivers = ["solar_os_tca8418_expansion_driver"]
 depends = ["service_expansion", "service_i2c", "service_pwm"]
@@ -1252,7 +1248,7 @@ requires = ["esp_driver_i2c", "esp_driver_gpio"]
 capabilities = ["i2c", "pwm"]
 
 [packages.sx1262]
-label = "board.sx1262"
+label = "expansion.sx1262"
 targets = ["esp32s3"]
 expansion_drivers = ["solar_os_sx1262_expansion_driver"]
 depends = ["service_radio", "service_spi"]
@@ -1265,7 +1261,7 @@ requires = ["esp_driver_gpio", "esp_driver_spi"]
 capabilities = ["spi"]
 
 [packages.rotary_encoder]
-label = "board.rotary-encoder"
+label = "expansion.rotary-encoder"
 expansion_drivers = ["solar_os_rotary_encoder_expansion_driver"]
 depends = ["service_expansion"]
 sources = [
@@ -1276,7 +1272,7 @@ requires = ["esp_driver_gpio"]
 capabilities = ["gpio"]
 
 [packages.bq27220]
-label = "board.bq27220"
+label = "expansion.bq27220"
 targets = ["esp32s3"]
 expansion_drivers = ["solar_os_bq27220_expansion_driver"]
 depends = ["service_battery", "service_expansion", "service_i2c"]
