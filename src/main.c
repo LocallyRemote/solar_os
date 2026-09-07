@@ -759,8 +759,16 @@ static void enter_light_sleep(const char *reason)
             solar_os_ble_keyboard_prepare_sleep(BLE_SLEEP_DISCONNECT_TIMEOUT_MS);
         if (ble_sleep_err != ESP_OK) {
             SOLAR_OS_LOGW(TAG,
-                          "BLE keyboard sleep prepare failed: %s",
+                          "BLE keyboard sleep prepare failed, cancelling sleep: %s",
                           esp_err_to_name(ble_sleep_err));
+            (void)esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
+            if (rtc_wake_gpio != SOLAR_OS_RTC_INTERRUPT_GPIO_NONE) {
+                (void)rtc_gpio_deinit((gpio_num_t)rtc_wake_gpio);
+            }
+            (void)esp_sleep_pd_config(ESP_PD_DOMAIN_RTC_PERIPH, ESP_PD_OPTION_AUTO);
+            key_restore_gpio_after_rtc();
+            (void)solar_os_power_end_explicit_sleep();
+            return;
         }
     }
 #endif
@@ -971,7 +979,7 @@ static void poll_key_button(void)
         update_status();
         draw_terminal_if_needed();
         if (forget_err == ESP_OK && pairing_err == ESP_OK) {
-            SOLAR_OS_LOGI(TAG, "KEY long press: BLE keyboard forgotten, pairing started");
+            SOLAR_OS_LOGI(TAG, "KEY long press: BLE keyboard forget and pairing requested");
         }
         if (forget_err != ESP_OK) {
             SOLAR_OS_LOGW(TAG,
