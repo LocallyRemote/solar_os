@@ -74,3 +74,7 @@ CONFIG_BT_CTRL_MAIN_XTAL_PU_DURING_LIGHT_SLEEP=y
 CONFIG_BT_GATTC_ENABLE=y
 CONFIG_BT_GATTC_CACHE_NVS_FLASH=y
 CONFIG_BT_GATTC_NOTIF_REG_MAX=16
+# Bluedroid's HID open call is synchronous and has no public cancellation API.
+# Bound offline keyboard reconnects so a pending open cannot delay KEY sleep by
+# the ESP-IDF default of 30 seconds.
+CONFIG_BT_BLE_ESTAB_LINK_CONN_TOUT=3

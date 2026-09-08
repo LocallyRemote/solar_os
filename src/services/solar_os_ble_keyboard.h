@@ -94,6 +94,7 @@ esp_err_t solar_os_ble_keyboard_scan(solar_os_ble_keyboard_scan_result_t *result
                                      size_t *found);
 esp_err_t solar_os_ble_keyboard_forget(void);
 esp_err_t solar_os_ble_keyboard_prepare_sleep(uint32_t timeout_ms);
+bool solar_os_ble_keyboard_sleep_prepare_ready(void);
 void solar_os_ble_keyboard_resume(void);
 bool solar_os_ble_keyboard_is_connected(void);
 bool solar_os_ble_keyboard_is_scanning(void);
