@@ -1,6 +1,6 @@
 [flavor]
-name = "rover"
-description = "Custom SolarOS flavor created for Rover."
+name = "custom"
+description = "Custom SolarOS flavor created with os_builder."
 
 [groups]
 hardware_shell = true
@@ -58,7 +58,6 @@ reader = true
 writer = true
 notes = true
 image_viewer = true
-sketch = true
 rfm69 = true
 rfm95 = true
 analog_joystick = true

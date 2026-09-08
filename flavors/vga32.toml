@@ -1,6 +1,6 @@
 [flavor]
-name = "vga32"
-description = "Custom flavor for LilyGo VGA32"
+name = "custom"
+description = "Custom SolarOS flavor created with os_builder."
 
 [groups]
 hardware_shell = true
@@ -44,8 +44,6 @@ chat = true
 chat_gateway = true
 gateway_sync = true
 audio_commands = true
-player = true
-webradio = true
 reader = true
 writer = true
 notes = true
