@@ -3367,9 +3367,8 @@ esp_err_t solar_os_ble_keyboard_prepare_sleep(uint32_t timeout_ms)
     reconnect_suppressed_for_pairing = false;
 
     if (!stop_reconnect_task("sleep", timeout_ms)) {
-        reconnect_suppressed_for_sleep = false;
-        SOLAR_OS_LOGW(TAG, "sleep: reconnect HID open still active");
-        return ESP_ERR_TIMEOUT;
+        SOLAR_OS_LOGI(TAG, "sleep: waiting for reconnect HID open to finish");
+        return ESP_ERR_NOT_FINISHED;
     }
     stop_scan_task_for_sleep(timeout_ms);
 
@@ -3461,6 +3460,18 @@ esp_err_t solar_os_ble_keyboard_prepare_sleep(uint32_t timeout_ms)
     initialized = false;
     set_status(BLE_KEYBOARD_IDLE, "sleep");
     return result;
+}
+
+bool solar_os_ble_keyboard_sleep_prepare_ready(void)
+{
+    if (!initialized) {
+        return true;
+    }
+
+    portENTER_CRITICAL(&reconnect_task_lock);
+    const bool reconnect_stopped = reconnect_task_handle == NULL;
+    portEXIT_CRITICAL(&reconnect_task_lock);
+    return reconnect_stopped && !forget_operation_pending();
 }
 
 void solar_os_ble_keyboard_resume(void)
