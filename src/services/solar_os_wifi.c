@@ -714,67 +714,13 @@ static esp_err_t wifi_select_saved_profile(wifi_profile_t *selected)
         return ESP_ERR_INVALID_ARG;
     }
 
-    wifi_profile_t profiles[SOLAR_OS_WIFI_PROFILE_MAX];
-    size_t count = 0;
-
     wifi_lock();
-    count = wifi_profile_count;
-    memcpy(profiles, wifi_profiles, sizeof(profiles));
-    wifi_unlock();
-
-    if (count == 0) {
+    if (wifi_profile_count == 0) {
+        wifi_unlock();
         return ESP_ERR_NOT_FOUND;
     }
-    if (count == 1) {
-        *selected = profiles[0];
-        return ESP_OK;
-    }
-
-    wifi_lock();
-    const solar_os_wifi_state_t previous_state = wifi_state;
-    wifi_state = SOLAR_OS_WIFI_STATE_SCANNING;
+    *selected = wifi_profiles[0];
     wifi_unlock();
-
-    esp_err_t ret = esp_wifi_scan_start(NULL, true);
-    if (ret != ESP_OK) {
-        wifi_lock();
-        wifi_state = previous_state;
-        wifi_unlock();
-        *selected = profiles[0];
-        return ESP_OK;
-    }
-
-    uint16_t record_count = SOLAR_OS_WIFI_SCAN_MAX_RESULTS;
-    wifi_ap_record_t records[SOLAR_OS_WIFI_SCAN_MAX_RESULTS] = {0};
-    ret = esp_wifi_scan_get_ap_records(&record_count, records);
-
-    wifi_lock();
-    wifi_state = previous_state;
-    wifi_unlock();
-
-    if (ret != ESP_OK) {
-        *selected = profiles[0];
-        return ESP_OK;
-    }
-
-    int best_index = -1;
-    int8_t best_rssi = INT8_MIN;
-    for (uint16_t record_index = 0; record_index < record_count; record_index++) {
-        char ssid[SOLAR_OS_WIFI_SSID_MAX + 1] = {0};
-        wifi_copy_ssid(ssid, sizeof(ssid), records[record_index].ssid, sizeof(records[record_index].ssid));
-        if (ssid[0] == '\0') {
-            continue;
-        }
-        for (size_t profile_index = 0; profile_index < count; profile_index++) {
-            if (strcmp(profiles[profile_index].ssid, ssid) == 0 &&
-                (best_index < 0 || records[record_index].rssi > best_rssi)) {
-                best_index = (int)profile_index;
-                best_rssi = records[record_index].rssi;
-            }
-        }
-    }
-
-    *selected = profiles[best_index >= 0 ? (size_t)best_index : 0];
     return ESP_OK;
 }
 

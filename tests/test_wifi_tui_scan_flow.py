@@ -14,6 +14,15 @@ def function(source: str, signature: str, next_signature: str) -> str:
 
 
 class WifiTuiScanFlowTest(unittest.TestCase):
+    def test_saved_connect_uses_only_the_most_recent_profile(self):
+        select_profile = function(
+            WIFI,
+            "static esp_err_t wifi_select_saved_profile(wifi_profile_t *selected)",
+            "static void wifi_clear_saved_ap_config_locked(void)",
+        )
+        self.assertIn("*selected = wifi_profiles[0];", select_profile)
+        self.assertNotIn("esp_wifi_scan_start", select_profile)
+
     def test_popup_is_rendered_before_nonblocking_scan_starts(self):
         open_scan = function(
             TUI,
