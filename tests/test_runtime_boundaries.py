@@ -334,6 +334,27 @@ class RuntimeBoundaryTest(unittest.TestCase):
             ble,
         )
 
+    def test_ble_reconnect_is_scan_gated_to_the_remembered_peer(self):
+        ble = (ROOT / "src/services/solar_os_ble_keyboard.c").read_text(
+            encoding="utf-8"
+        )
+        reconnect_start = ble.index("static void reconnect_task(")
+        reconnect_end = ble.index("static void schedule_reconnect(", reconnect_start)
+        reconnect = ble[reconnect_start:reconnect_end]
+        candidate_start = ble.index("static void consider_candidate(")
+        candidate_end = ble.index("static const char *key_type_name(", candidate_start)
+        candidate = ble[candidate_start:candidate_end]
+
+        self.assertIn(
+            "scan_and_open_keyboard(BLE_KEYBOARD_SCAN_RECONNECT)", reconnect
+        )
+        self.assertNotIn("open_keyboard(peer->bda", reconnect)
+        self.assertIn(
+            "active_scan_mode == BLE_KEYBOARD_SCAN_RECONNECT", candidate
+        )
+        self.assertIn("bda_matches_remembered_peer", candidate)
+        self.assertIn("BLE_KEYBOARD_RECONNECT_BACKOFF_MAX_MS", reconnect)
+
     def test_audio_stream_direction_and_shell_capabilities(self):
         audio = (ROOT / "src/services/solar_os_audio.c").read_text(
             encoding="utf-8"

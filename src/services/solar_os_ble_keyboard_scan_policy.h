@@ -4,6 +4,9 @@
 #include <stdint.h>
 
 bool solar_os_ble_keyboard_scan_name_is_keyboard_like(const char *name);
+bool solar_os_ble_keyboard_scan_reconnect_bda_matches(
+    const uint8_t remembered_bda[6],
+    const uint8_t advertised_bda[6]);
 bool solar_os_ble_keyboard_scan_candidate_should_replace(
     bool current_valid,
     bool current_keyboard_like,

@@ -11,6 +11,18 @@ int main(void)
     assert(!solar_os_ble_keyboard_scan_name_is_keyboard_like("mouse"));
     assert(!solar_os_ble_keyboard_scan_name_is_keyboard_like(NULL));
 
+    const uint8_t remembered_bda[6] = {1, 2, 3, 4, 5, 6};
+    const uint8_t same_bda[6] = {1, 2, 3, 4, 5, 6};
+    const uint8_t unrelated_bda[6] = {6, 5, 4, 3, 2, 1};
+    assert(solar_os_ble_keyboard_scan_reconnect_bda_matches(
+        remembered_bda, same_bda));
+    assert(!solar_os_ble_keyboard_scan_reconnect_bda_matches(
+        remembered_bda, unrelated_bda));
+    assert(!solar_os_ble_keyboard_scan_reconnect_bda_matches(
+        remembered_bda, NULL));
+    assert(!solar_os_ble_keyboard_scan_reconnect_bda_matches(
+        NULL, same_bda));
+
     assert(!solar_os_ble_keyboard_scan_candidate_should_replace(
         false, false, 0, false, false, -20));
     assert(solar_os_ble_keyboard_scan_candidate_should_replace(
