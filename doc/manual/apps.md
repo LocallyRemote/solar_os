@@ -42,6 +42,13 @@ Exit behavior:
   Either Alt key is accepted, including AltGr on compact keyboards.
   Switching back restores the retained terminal or graphics frame, including
   Python and Lua application screens.
+- `Alt+Enter` toggles full-screen mode in applications that use the shared TUI.
+  Either Alt key is accepted, including AltGr; on the CL-32 keyboard, use
+  `File+OK`. Full-screen mode hides the system status bar and persistent TUI
+  footer rows without changing the saved terminal profile. TUIs start in this
+  mode automatically when ten or fewer terminal rows are available. Input rows
+  remain visible, and status or error feedback can temporarily cover the last
+  content row.
 
 ## agent
 

@@ -1177,7 +1177,11 @@ static void dispatch_input_key(const solar_os_input_key_event_t *event)
         return;
     }
 
-    if ((event->modifiers & SOLAR_OS_INPUT_MOD_LEFT_ALT) != 0 &&
+    const bool tui_fullscreen_altgr =
+        (event->modifiers & SOLAR_OS_INPUT_MOD_RIGHT_ALT) != 0 &&
+        (event->key == SOLAR_OS_KEY_ENTER || event->key == '\r');
+    if (((event->modifiers & SOLAR_OS_INPUT_MOD_LEFT_ALT) != 0 ||
+         tui_fullscreen_altgr) &&
         event->key != SOLAR_OS_KEY_APP_EXIT) {
         const char prefix = (char)SOLAR_OS_KEY_ALT_PREFIX;
         dispatch_input_chars(&prefix, 1);

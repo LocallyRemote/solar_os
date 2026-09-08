@@ -70,8 +70,7 @@ static size_t email_app_char_len(const char *text)
 
 static size_t email_app_content_rows(void)
 {
-    const size_t rows = solar_os_tui_rows(&email_app.tui);
-    return rows > 2U ? rows - 2U : 0;
+    return solar_os_tui_screen_content_rows(&email_app.tui, 1U, 1U);
 }
 
 static void email_app_refresh(void)

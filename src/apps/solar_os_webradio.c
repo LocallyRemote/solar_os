@@ -428,8 +428,10 @@ static void webradio_render_tui(void)
                             SOLAR_OS_TUI_ATTR_BOLD : SOLAR_OS_TUI_ATTR_NORMAL);
 
     const bool editing = webradio.dialog != WEBRADIO_DIALOG_NONE;
-    const size_t list_rows = editing ?
-        (rows > 6U ? rows - 6U : 0U) : rows - 4U;
+    const size_t footer_rows = (editing ? 2U : 0U) +
+        solar_os_tui_screen_bottom_rows(&webradio.tui, 1U);
+    const size_t list_rows = rows > 3U + footer_rows ?
+        rows - 3U - footer_rows : 0U;
     if (webradio.cursor < webradio.top) {
         webradio.top = webradio.cursor;
     }
@@ -473,6 +475,8 @@ static void webradio_render_tui(void)
         }
     }
     if (editing) {
+        const size_t content_end = solar_os_tui_screen_content_end(
+            &webradio.tui, 1U);
         char editor_label[192];
         snprintf(editor_label,
                  sizeof(editor_label),
@@ -485,7 +489,7 @@ static void webradio_render_tui(void)
                       editor_label,
                       cols > 2U ? cols - 2U : 0U);
         solar_os_tui_addstr(&webradio.tui,
-                            rows - 3U,
+                            content_end - 2U,
                             1U,
                             clipped,
                             SOLAR_OS_TUI_ATTR_BOLD);
@@ -496,12 +500,12 @@ static void webradio_render_tui(void)
             webradio.dialog_input + input_length - visible_chars :
             webradio.dialog_input;
         solar_os_tui_addstr(&webradio.tui,
-                            rows - 2U,
+                            content_end - 1U,
                             1U,
                             "> ",
                             SOLAR_OS_TUI_ATTR_NORMAL);
         solar_os_tui_addstr(&webradio.tui,
-                            rows - 2U,
+                            content_end - 1U,
                             3U,
                             visible,
                             SOLAR_OS_TUI_ATTR_NORMAL);
@@ -509,7 +513,7 @@ static void webradio_render_tui(void)
         if (cursor_col >= cols) {
             cursor_col = cols - 1U;
         }
-        solar_os_tui_move(&webradio.tui, rows - 2U, cursor_col);
+        solar_os_tui_move(&webradio.tui, content_end - 1U, cursor_col);
         solar_os_tui_set_cursor_visible(&webradio.tui, true);
     } else {
         if (webradio.ui_message[0] != '\0') {
