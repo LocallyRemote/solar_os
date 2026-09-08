@@ -196,7 +196,8 @@ static void wifi_tui_current_value(wifi_tui_item_t item,
 
 static size_t wifi_tui_scan_visible_rows(size_t rows)
 {
-    return rows > 3U ? rows - 3U : 0U;
+    (void)rows;
+    return solar_os_tui_screen_content_rows(&wifi_tui.tui, 2U, 1U);
 }
 
 static void wifi_tui_render_scan(void)
@@ -262,10 +263,8 @@ static void wifi_tui_render_scan(void)
         solar_os_tui_write_cell(tui, 2U, 0, cols, "no networks found", SOLAR_OS_TUI_ATTR_NORMAL);
     }
     if (rows > 1U) {
-        solar_os_tui_draw_help(
-            tui,
-            wifi_tui.status[0] != '\0' ? wifi_tui.status :
-                "arrows select  enter connects  esc back");
+        solar_os_tui_draw_footer(tui, wifi_tui.status,
+                                 "arrows select  enter connects  esc back");
     }
 
     solar_os_tui_set_cursor_visible(tui, false);
@@ -298,11 +297,10 @@ static void wifi_tui_render_station_password(void)
     }
 
     if (rows > 1U) {
-        const size_t input_row = rows > 3U ? rows - 2U : 1U;
-        solar_os_tui_draw_help(
-            tui,
-            wifi_tui.status[0] != '\0' ? wifi_tui.status :
-                "enter connects  esc back");
+        const size_t content_end = solar_os_tui_screen_content_end(tui, 1U);
+        const size_t input_row = content_end > 1U ? content_end - 1U : 1U;
+        solar_os_tui_draw_footer(tui, wifi_tui.status,
+                                 "enter connects  esc back");
         solar_os_tui_draw_input(tui,
                                 input_row,
                                 0,
@@ -373,10 +371,8 @@ static void wifi_tui_render_main(void)
     }
 
     if (rows > 1) {
-        solar_os_tui_draw_help(
-            &wifi_tui.tui,
-            wifi_tui.status[0] != '\0' ? wifi_tui.status :
-                "arrows select/change  enter apply  esc exits");
+        solar_os_tui_draw_footer(&wifi_tui.tui, wifi_tui.status,
+                                 "arrows select/change  enter apply  esc exits");
     }
 
     solar_os_tui_set_cursor_visible(tui, false);
@@ -385,10 +381,12 @@ static void wifi_tui_render_main(void)
 
 static solar_os_tui_rect_t wifi_tui_popup_bounds(size_t rows, size_t cols)
 {
+    const size_t height = solar_os_tui_screen_content_rows(
+        &wifi_tui.tui, 1U, 1U);
     return (solar_os_tui_rect_t) {
         .row = rows > 2U ? 1U : 0U,
         .col = 0U,
-        .height = rows > 2U ? rows - 2U : rows,
+        .height = rows > 2U ? height : rows,
         .width = cols,
     };
 }
@@ -457,10 +455,8 @@ static void wifi_tui_render_saved_stations(void)
         solar_os_tui_write_cell(tui, 2U, 0, cols, "no saved stations", SOLAR_OS_TUI_ATTR_NORMAL);
     }
     if (rows > 1U) {
-        solar_os_tui_draw_help(
-            tui,
-            wifi_tui.status[0] != '\0' ? wifi_tui.status :
-                "enter/del forgets  esc back");
+        solar_os_tui_draw_footer(tui, wifi_tui.status,
+                                 "enter/del forgets  esc back");
     }
     if (wifi_tui.saved_station_viewport.cursor < wifi_tui.saved_station_count) {
         wifi_tui_draw_forget_popup(
@@ -506,10 +502,8 @@ static void wifi_tui_render_saved_aps(void)
                                 SOLAR_OS_TUI_ATTR_INVERSE);
     }
     if (rows > 1U) {
-        solar_os_tui_draw_help(
-            tui,
-            wifi_tui.status[0] != '\0' ? wifi_tui.status :
-                "enter add/edit  del removes  esc back");
+        solar_os_tui_draw_footer(tui, wifi_tui.status,
+                                 "enter add/edit  del removes  esc back");
     }
     if (wifi_tui.has_saved_ap) {
         wifi_tui_draw_forget_popup("Remove access point", wifi_tui.saved_ap.ssid);
@@ -532,10 +526,11 @@ static void wifi_tui_render_ap_input(bool password)
                             wifi_tui.editing_ap ? "edit access point" : "add access point",
                             password ? wifi_tui.ap_ssid : "");
     if (rows > 1U) {
-        const size_t input_row = rows > 3U ? rows - 2U : 1U;
-        solar_os_tui_draw_help(tui,
-                               password ? "enter saves  esc back" :
-                                          "enter continues  esc back");
+        const size_t content_end = solar_os_tui_screen_content_end(tui, 1U);
+        const size_t input_row = content_end > 1U ? content_end - 1U : 1U;
+        solar_os_tui_draw_footer(tui, wifi_tui.status,
+                                 password ? "enter saves  esc back" :
+                                            "enter continues  esc back");
         solar_os_tui_draw_input(tui,
                                 input_row,
                                 0,
@@ -982,6 +977,11 @@ static bool wifi_tui_event(solar_os_context_t *ctx, const solar_os_event_t *even
 
     if (event == NULL) {
         return false;
+    }
+
+    if (event->type == SOLAR_OS_EVENT_RESUME) {
+        wifi_tui_render();
+        return true;
     }
 
     if (event->type == SOLAR_OS_EVENT_TICK) {

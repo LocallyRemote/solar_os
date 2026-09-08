@@ -61,8 +61,7 @@ static void expansion_tui_render(void);
 
 static size_t expansion_tui_body_rows(void)
 {
-    const size_t rows = solar_os_tui_rows(&expansion_tui.tui);
-    return rows > 3U ? rows - 3U : 0U;
+    return solar_os_tui_screen_content_rows(&expansion_tui.tui, 2U, 1U);
 }
 
 static void expansion_tui_set_message(const char *message)
@@ -110,9 +109,9 @@ static void expansion_tui_finish_render(bool cursor_visible)
 
 static void expansion_tui_draw_help(const char *help)
 {
-    solar_os_tui_draw_help(&expansion_tui.tui,
-                           expansion_tui.message[0] != '\0' ?
-                               expansion_tui.message : help);
+    solar_os_tui_draw_footer(&expansion_tui.tui,
+                             expansion_tui.message,
+                             help);
 }
 
 static size_t expansion_tui_category_driver_count(
@@ -378,10 +377,12 @@ static void expansion_tui_render_device_detail(void)
 static solar_os_tui_rect_t expansion_tui_popup_bounds(void)
 {
     const size_t rows = solar_os_tui_rows(&expansion_tui.tui);
+    const size_t height = solar_os_tui_screen_content_rows(
+        &expansion_tui.tui, 1U, 1U);
     return (solar_os_tui_rect_t) {
         .row = rows > 2U ? 1U : 0U,
         .col = 0U,
-        .height = rows > 2U ? rows - 2U : rows,
+        .height = rows > 2U ? height : rows,
         .width = solar_os_tui_cols(&expansion_tui.tui),
     };
 }

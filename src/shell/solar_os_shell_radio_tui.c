@@ -468,7 +468,6 @@ static void radio_tui_render(void)
                              SOLAR_OS_TUI_ATTR_BOLD | SOLAR_OS_TUI_ATTR_INVERSE);
     }
 
-    const size_t footer_row = rows - 1U;
     if (!has_radio) {
         if (rows > 1) {
             solar_os_tui_write_cell(&radio_tui.tui, 1, 0, split, "device", SOLAR_OS_TUI_ATTR_NORMAL);
@@ -488,7 +487,8 @@ static void radio_tui_render(void)
 
     const size_t value_col = split + 1U;
     const size_t value_width = radio_tui_visible_width(cols, value_col);
-    const size_t visible_items = rows > 2 ? rows - 2U : 0;
+    const size_t visible_items = solar_os_tui_screen_content_rows(
+        &radio_tui.tui, 1U, 1U);
     radio_tui_update_scroll(visible_items);
 
     size_t edit_cursor_row = 0;
@@ -527,11 +527,11 @@ static void radio_tui_render(void)
         }
     }
 
-    const char *footer = radio_tui.status[0] != '\0' ?
-        radio_tui.status :
-        (radio_tui.editing ? "enter saves, esc cancels" : "enter edits, arrows cycle, esc exits");
     if (rows > 1) {
-        solar_os_tui_draw_help(&radio_tui.tui, footer);
+        solar_os_tui_draw_footer(&radio_tui.tui, radio_tui.status,
+                                 radio_tui.editing ?
+                                     "enter saves, esc cancels" :
+                                     "enter edits, arrows cycle, esc exits");
     }
 
     if (edit_cursor_visible && value_width > 0) {
@@ -890,6 +890,11 @@ static bool radio_tui_event(solar_os_context_t *ctx, const solar_os_event_t *eve
 
     if (event == NULL) {
         return false;
+    }
+
+    if (event->type == SOLAR_OS_EVENT_RESUME) {
+        radio_tui_render();
+        return true;
     }
 
     if (event->type == SOLAR_OS_EVENT_TICK) {

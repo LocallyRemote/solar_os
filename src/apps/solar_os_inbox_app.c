@@ -180,8 +180,7 @@ static void inbox_app_refresh(void)
 
 static size_t inbox_app_list_rows(void)
 {
-    const size_t rows = solar_os_tui_rows(&inbox_app.tui);
-    return rows > 2U ? rows - 2U : 0;
+    return solar_os_tui_screen_content_rows(&inbox_app.tui, 1U, 1U);
 }
 
 static void inbox_app_ensure_visible(void)
@@ -251,9 +250,7 @@ static void inbox_app_render_list(void)
                  "Enter open  d delete  u filter  m read  s sound:%s  q quit",
                  !inbox_app.status.sound_available ? "n/a" :
                      (inbox_app.status.sound_enabled ? "on" : "off"));
-        solar_os_tui_draw_help(&inbox_app.tui,
-                               inbox_app.feedback[0] != '\0' ?
-                                   inbox_app.feedback : line);
+        solar_os_tui_draw_footer(&inbox_app.tui, inbox_app.feedback, line);
     }
 }
 
@@ -372,7 +369,8 @@ static void inbox_app_render_detail(void)
 {
     const size_t rows = solar_os_tui_rows(&inbox_app.tui);
     const size_t cols = solar_os_tui_cols(&inbox_app.tui);
-    const size_t visible = rows > 2U ? rows - 2U : 0;
+    const size_t visible = solar_os_tui_screen_content_rows(
+        &inbox_app.tui, 1U, 1U);
     char header[INBOX_APP_LINE_MAX];
     char line[INBOX_APP_LINE_MAX];
     size_t offset = 0;
@@ -409,10 +407,8 @@ static void inbox_app_render_detail(void)
     }
 
     if (rows > 0) {
-        solar_os_tui_draw_help(
-            &inbox_app.tui,
-            inbox_app.feedback[0] != '\0' ? inbox_app.feedback :
-                "Left back  d delete  arrows scroll  m unread  q quit");
+        solar_os_tui_draw_footer(&inbox_app.tui, inbox_app.feedback,
+                                 "Left back  d delete  arrows scroll  m unread  q quit");
     }
 }
 
