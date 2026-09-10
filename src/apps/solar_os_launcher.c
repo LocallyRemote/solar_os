@@ -64,7 +64,8 @@ static const char launcher_default_config[] =
     "    {\"name\": \"Manual\", \"icon\": 33, \"command\": \"help\", \"column\": 1, \"row\": 0},\n"
     "    {\"name\": \"Wi-Fi\", \"icon\": 217, \"command\": \"wifi\", \"column\": 2, \"row\": 0},\n"
     "    {\"name\": \"Clock\", \"icon\": 59, \"command\": \"clock\", \"column\": 0, \"row\": 1},\n"
-    "    {\"name\": \"Calculator\", \"icon\": 42, \"command\": \"calc\", \"column\": 1, \"row\": 1}\n"
+    "    {\"name\": \"Calculator\", \"icon\": 42, \"command\": \"calc\", \"column\": 1, \"row\": 1},\n"
+    "    {\"name\": \"Writer\", \"icon\": 163, \"command\": \"writer\", \"column\": 2, \"row\": 1}\n"
     "  ]\n"
     "}\n";
 

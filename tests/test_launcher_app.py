@@ -24,6 +24,13 @@ class LauncherAppTest(unittest.TestCase):
             self.assertIn(field, LAUNCHER)
         self.assertIn("solar_os_launcher_layout_valid", LAUNCHER)
 
+    def test_default_config_includes_writer(self):
+        self.assertIn(
+            '\\"name\\": \\"Writer\\", \\"icon\\": 163, '
+            '\\"command\\": \\"writer\\", \\"column\\": 2, \\"row\\": 1',
+            LAUNCHER,
+        )
+
     def test_keyboard_pointer_and_child_return_are_wired(self):
         for key in (
             "SOLAR_OS_KEY_LEFT",
