@@ -30,6 +30,7 @@ serial_terminal = true
 editor = true
 pager = true
 files = true
+launcher = true
 io = true
 sump = true
 bridge = true

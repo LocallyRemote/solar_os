@@ -114,6 +114,10 @@ includes the client and its server job. Package dependencies can add services
 and other internal support automatically. Those packages remain implementation
 details rather than becoming additional choices.
 
+The `launcher` group selects the native graphical launcher and its JSON parser.
+Board capability pruning removes it from builds without graphics. Its mutable
+configuration and item state remain cold until the app starts.
+
 The `image_viewer` and `sketch` groups select the two media applications. View
 requires graphics and PSRAM for large decoded images. Sketch requires graphics
 but has no pointer or PSRAM capability gate: it uses a compact two-bit canvas

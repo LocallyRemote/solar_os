@@ -26,6 +26,7 @@ serial_terminal = true
 editor = true
 pager = true
 files = true
+launcher = true
 clock = true
 calculator = true
 plot = true

@@ -71,6 +71,9 @@
 #if SOLAR_OS_PACKAGE_APP_FILES
 #include "solar_os_files.h"
 #endif
+#if SOLAR_OS_PACKAGE_APP_LAUNCHER
+#include "solar_os_launcher.h"
+#endif
 #if SOLAR_OS_PACKAGE_APP_FTP
 #include "solar_os_ftp_app.h"
 #endif
@@ -201,6 +204,9 @@ static const solar_os_app_registry_entry_t registered_apps[] = {
 #endif
 #if SOLAR_OS_PACKAGE_APP_FILES
     APP_ENTRY("files", "two-pane file manager and launcher", &solar_os_files_app, SOLAR_OS_APP_CAP_TEXT | SOLAR_OS_APP_CAP_DISPLAY | SOLAR_OS_APP_CAP_PORT, "files [--launcher] [path]", 1, 3),
+#endif
+#if SOLAR_OS_PACKAGE_APP_LAUNCHER
+    APP_ENTRY("launcher", "configurable graphical launcher", &solar_os_launcher_app, SOLAR_OS_APP_CAP_GRAPHICS | SOLAR_OS_APP_CAP_DISPLAY, "launcher [config.json]", 1, 2),
 #endif
 #if SOLAR_OS_PACKAGE_APP_FTP
     APP_ENTRY("ftp", "two-pane FTP file manager", &solar_os_ftp_app, SOLAR_OS_APP_CAP_TEXT | SOLAR_OS_APP_CAP_DISPLAY | SOLAR_OS_APP_CAP_PORT, "ftp HOST [PORT] [--user USER --password PASSWORD] [--remote PATH] [--local PATH]", 2, 11),

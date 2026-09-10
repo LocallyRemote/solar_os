@@ -1506,6 +1506,9 @@ static const char * const path_gameboy[] = {"gameboy"};
 static const char * const path_files[] = {"files"};
 static const char * const path_files_launcher[] = {"files", "--launcher"};
 #endif
+#if SOLAR_OS_PACKAGE_APP_LAUNCHER
+static const char * const path_launcher[] = {"launcher"};
+#endif
 #if SOLAR_OS_PACKAGE_APP_NOTES
 static const char * const path_notes[] = {"notes"};
 #endif
@@ -2687,6 +2690,9 @@ static const shell_completion_rule_t shell_completion_rules[] = {
     SHELL_COMPLETION_OPTIONS(path_files, files_options),
     SHELL_COMPLETION_PATH(path_files, false),
     SHELL_COMPLETION_PATH(path_files_launcher, false),
+#endif
+#if SOLAR_OS_PACKAGE_APP_LAUNCHER
+    SHELL_COMPLETION_PATH(path_launcher, false),
 #endif
 #if SOLAR_OS_PACKAGE_APP_NOTES
     SHELL_COMPLETION_PATH(path_notes, false),

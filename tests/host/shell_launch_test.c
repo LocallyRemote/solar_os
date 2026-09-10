@@ -88,6 +88,9 @@ int main(void)
     assert(path_arg(2, launcher) == -1);
     assert(path_arg(3, launcher_path) == 2);
 
+    char *graphical_launcher[] = {"launcher", "menus/work.json"};
+    assert(path_arg(2, graphical_launcher) == 1);
+
     assert(solar_os_shell_path_is_script("./startup.sh"));
     assert(solar_os_shell_path_is_script("MENU.SH"));
     assert(!solar_os_shell_path_is_script("script.py"));
