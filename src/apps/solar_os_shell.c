@@ -1506,6 +1506,9 @@ static const char * const path_gameboy[] = {"gameboy"};
 static const char * const path_files[] = {"files"};
 static const char * const path_files_launcher[] = {"files", "--launcher"};
 #endif
+#if SOLAR_OS_PACKAGE_APP_LAUNCHER
+static const char * const path_launcher[] = {"launcher"};
+#endif
 #if SOLAR_OS_PACKAGE_APP_NOTES
 static const char * const path_notes[] = {"notes"};
 #endif
@@ -2687,6 +2690,9 @@ static const shell_completion_rule_t shell_completion_rules[] = {
     SHELL_COMPLETION_OPTIONS(path_files, files_options),
     SHELL_COMPLETION_PATH(path_files, false),
     SHELL_COMPLETION_PATH(path_files_launcher, false),
+#endif
+#if SOLAR_OS_PACKAGE_APP_LAUNCHER
+    SHELL_COMPLETION_PATH(path_launcher, false),
 #endif
 #if SOLAR_OS_PACKAGE_APP_NOTES
     SHELL_COMPLETION_PATH(path_notes, false),
@@ -9335,6 +9341,19 @@ esp_err_t solar_os_shell_session_submit_command(solar_os_context_t *ctx,
         shell_handle_char(ctx, *p);
     }
     shell_handle_char(ctx, '\r');
+    return ESP_OK;
+}
+
+esp_err_t solar_os_shell_execute_command(solar_os_context_t *ctx,
+                                         const char *command)
+{
+    if (ctx == NULL || command == NULL || command[0] == '\0') {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (strlen(command) >= SHELL_INPUT_MAX) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    (void)shell_execute_line(ctx, command, false, NULL, 0U);
     return ESP_OK;
 }
 

@@ -146,6 +146,11 @@ label = "File manager"
 category = "Terminal tools"
 members = ["app_files"]
 
+[groups.launcher]
+label = "Graphical launcher"
+category = "Terminal tools"
+members = ["app_launcher"]
+
 [groups.io]
 label = "GPIO control app"
 category = "Terminal tools"
@@ -1850,6 +1855,15 @@ capabilities = ["psram", "gfx"]
 [packages.app_files]
 label = "app.files"
 sources = ["apps/solar_os_files.c"]
+
+[packages.app_launcher]
+label = "app.launcher"
+depends = ["service_json"]
+sources = [
+  "apps/solar_os_launcher.c",
+  "apps/solar_os_launcher_layout.c",
+]
+capabilities = ["gfx"]
 
 [packages.app_ftp]
 label = "app.ftp"

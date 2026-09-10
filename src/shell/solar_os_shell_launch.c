@@ -12,6 +12,7 @@ static bool app_has_first_path_arg(const char *app_name)
         strcmp(app_name, "writer") == 0 ||
         strcmp(app_name, "sheet") == 0 ||
         strcmp(app_name, "gameboy") == 0 ||
+        strcmp(app_name, "launcher") == 0 ||
         strcmp(app_name, "python") == 0 ||
         strcmp(app_name, "lua") == 0;
 }

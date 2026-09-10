@@ -4,7 +4,7 @@ title = "Application reference"
 section = "app"
 summary = "Usage, controls, and examples for every foreground application"
 aliases = ["applications"]
-keywords = "apps applications foreground controls usage examples reader writer sketch paint pointer png markdown less files edit hexedit binary agent calculator calc graph webradio radio mp3 function generator funcgen waveform sweep"
+keywords = "apps applications foreground controls usage examples launcher graphical grid icons reader writer sketch paint pointer png markdown less files edit hexedit binary agent calculator calc graph webradio radio mp3 function generator funcgen waveform sweep"
 packages_any = []
 +++
 # SolarOS Embedded Apps
@@ -669,6 +669,52 @@ Controls:
 - `Ctrl+S` saves in place. `Ctrl+Q`, `Esc`, or the app-exit key exits without
   saving pending changes.
 - `Ctrl++` and `Ctrl+-` adjust editor text size for the active session.
+
+## launcher
+
+Configurable native graphical launcher for display shells. It draws the configured
+grid, centers one icon in each occupied cell, and shows the selected icon larger
+with its title centered underneath. Arrow keys move between occupied cells,
+`Enter` opens the selection, and a pointer selects and opens items by point and
+click. `Esc` or the app-exit key returns to the shell.
+
+Usage:
+
+```text
+launcher [config.json]
+```
+
+Without an argument, Launcher reads `launcher.json` from the active storage root.
+The first run creates a usable default file there. A supplied path selects another
+configuration. Launcher reloads the file whenever a child application returns,
+so editing the configuration through a launcher item takes effect immediately.
+
+The file is JSON. `layout.columns` and `layout.rows` define a grid from 1 by 1
+through 8 by 8. Each item has a displayed `name`, a numeric Open Iconic `icon`
+ID, a SolarOS shell `command`, and a zero-based `column` and `row`. A cell can
+contain at most one item, and a configuration can contain up to 32 items:
+
+```json
+{
+  "layout": {"columns": 3, "rows": 2},
+  "items": [
+    {"name": "Files", "icon": 107, "command": "files", "column": 0, "row": 0},
+    {"name": "Manual", "icon": 33, "command": "help", "column": 1, "row": 0},
+    {"name": "Wi-Fi", "icon": 217, "command": "wifi", "column": 2, "row": 0},
+    {"name": "Sketch", "icon": 39, "command": "sketch", "column": 0, "row": 1}
+  ]
+}
+```
+
+Icon IDs use the zero-based order in `solar_os_gfx_icons.h`, from 0 through
+222. Common IDs include Book 33, Browser 38, Brush 39, Calculator 42,
+Clock 59, Cog 65, Document 82, Folder 107, Home 120, Musical Note 161, Pencil
+163, Terminal 201, and Wi-Fi 217.
+
+Commands use the normal SolarOS shell parser, so arguments, aliases, scripts,
+and application availability checks behave exactly as at the prompt. A launched
+foreground application returns to Launcher when it closes. A command that does
+not open an application returns to the shell so its output remains visible.
 
 ## files
 

@@ -42,6 +42,8 @@ bool solar_os_shell_session_event(solar_os_context_t *ctx,
 esp_err_t solar_os_shell_session_submit_command(solar_os_context_t *ctx,
                                                 solar_os_shell_session_t *session,
                                                 const char *command);
+esp_err_t solar_os_shell_execute_command(solar_os_context_t *ctx,
+                                         const char *command);
 void solar_os_shell_session_prompt(solar_os_context_t *ctx, solar_os_shell_session_t *session);
 void solar_os_shell_session_prepare_foreground_launch(solar_os_context_t *ctx,
                                                       bool clear_on_resume);

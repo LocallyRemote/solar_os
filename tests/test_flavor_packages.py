@@ -82,6 +82,22 @@ class FlavorPackagesTest(unittest.TestCase):
         self.assertTrue(pruned_packages["app_sketch"])
         self.assertFalse(pruned_packages["app_view"])
 
+    def test_launcher_is_available_on_graphics_builds(self):
+        for flavor in ("core", "full", "netrunner", "rover", "vga32", "writerdeck"):
+            groups, packages = self.resolve(flavor)[2:]
+            self.assertTrue(groups["launcher"], flavor)
+            self.assertTrue(packages["app_launcher"], flavor)
+
+        _, _, groups, packages = self.resolve("core")
+        _, graphics = generate_flavor_config.apply_board_capability_pruning(
+            self.catalog, groups, packages, {"gfx"}
+        )
+        _, headless = generate_flavor_config.apply_board_capability_pruning(
+            self.catalog, groups, packages, set()
+        )
+        self.assertTrue(graphics["app_launcher"])
+        self.assertFalse(headless["app_launcher"])
+
     def test_board_required_package_enables_dependencies(self):
         _, _, _, packages = self.resolve("core")
         enabled = generate_flavor_config.enable_required_packages(
