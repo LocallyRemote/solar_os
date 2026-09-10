@@ -1,4 +1,7 @@
+import ast
+import json
 from pathlib import Path
+import re
 import unittest
 
 
@@ -30,6 +33,20 @@ class LauncherAppTest(unittest.TestCase):
             '\\"command\\": \\"writer\\", \\"column\\": 2, \\"row\\": 1',
             LAUNCHER,
         )
+
+    def test_embedded_default_is_valid_json(self):
+        start = LAUNCHER.index("static const char launcher_default_config[]")
+        end = LAUNCHER.index(";", start)
+        literals = re.findall(r'^\s*(".*")$', LAUNCHER[start:end], re.MULTILINE)
+        document = "".join(ast.literal_eval(literal) for literal in literals)
+        parsed = json.loads(document)
+        self.assertEqual(parsed["layout"], {"columns": 3, "rows": 2})
+        self.assertEqual(len(parsed["items"]), 6)
+
+    def test_default_config_is_verified_and_atomically_replaced(self):
+        self.assertIn("solar_os_storage_sync_file(file)", LAUNCHER)
+        self.assertIn("memcmp(verify, launcher_default_config, length)", LAUNCHER)
+        self.assertIn("solar_os_storage_replace_file(temporary, path, backup)", LAUNCHER)
 
     def test_keyboard_pointer_and_child_return_are_wired(self):
         for key in (

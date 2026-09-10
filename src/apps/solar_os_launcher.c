@@ -7,7 +7,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <unistd.h>
 
 #include "solar_os_app_registry.h"
 #include "solar_os_gfx.h"
@@ -306,24 +305,45 @@ static esp_err_t launcher_parse_config(const char *source, size_t source_len)
 static esp_err_t launcher_write_default_config(const char *path)
 {
     char temporary[SOLAR_OS_STORAGE_PATH_MAX];
-    const int written = snprintf(temporary, sizeof(temporary), "%s.tmp", path);
-    if (written < 0 || (size_t)written >= sizeof(temporary)) {
-        return ESP_ERR_INVALID_SIZE;
+    char backup[SOLAR_OS_STORAGE_PATH_MAX];
+    esp_err_t err = solar_os_storage_sibling_path(
+        path, ".tmp", temporary, sizeof(temporary));
+    if (err == ESP_OK) {
+        err = solar_os_storage_sibling_path(
+            path, ".bak", backup, sizeof(backup));
     }
+    if (err != ESP_OK) {
+        return err;
+    }
+    (void)solar_os_storage_remove(temporary);
     FILE *file = fopen(temporary, "wb");
     if (file == NULL) {
         return ESP_FAIL;
     }
     const size_t length = strlen(launcher_default_config);
-    bool saved = fwrite(launcher_default_config, 1U, length, file) == length;
-    if (fclose(file) != 0) {
-        saved = false;
+    err = fwrite(launcher_default_config, 1U, length, file) == length ?
+        solar_os_storage_sync_file(file) : ESP_FAIL;
+    if (fclose(file) != 0 && err == ESP_OK) {
+        err = ESP_FAIL;
     }
-    if (!saved || rename(temporary, path) != 0) {
-        (void)unlink(temporary);
-        return ESP_FAIL;
+    if (err == ESP_OK) {
+        char verify[sizeof(launcher_default_config)];
+        size_t verify_len = 0U;
+        err = solar_os_storage_read_file(temporary, verify, sizeof(verify),
+                                         &verify_len);
+        if (err == ESP_OK &&
+            (verify_len != length ||
+             memcmp(verify, launcher_default_config, length) != 0)) {
+            err = ESP_ERR_INVALID_CRC;
+        }
     }
-    return ESP_OK;
+    if (err == ESP_OK) {
+        err = solar_os_storage_replace_file(temporary, path, backup);
+    }
+    if (err != ESP_OK) {
+        (void)solar_os_storage_remove(temporary);
+    }
+    return err;
 }
 
 static esp_err_t launcher_load_config(void)
@@ -333,13 +353,15 @@ static esp_err_t launcher_load_config(void)
         if (errno != ENOENT) {
             return ESP_FAIL;
         }
-        esp_err_t err = launcher_write_default_config(launcher.config_path);
+        esp_err_t err = launcher_parse_config(
+            launcher_default_config, strlen(launcher_default_config));
+        if (err == ESP_OK) {
+            err = launcher_write_default_config(launcher.config_path);
+        }
         if (err != ESP_OK) {
             return err;
         }
-        if (stat(launcher.config_path, &info) != 0) {
-            return ESP_FAIL;
-        }
+        return ESP_OK;
     }
     if (info.st_size <= 0 || (uint64_t)info.st_size > LAUNCHER_CONFIG_MAX_BYTES) {
         return ESP_ERR_INVALID_SIZE;
