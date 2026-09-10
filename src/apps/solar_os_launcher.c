@@ -152,7 +152,11 @@ static void launcher_render(solar_os_context_t *ctx)
     const int height = (int)solar_os_gfx_height(gfx);
     solar_os_gfx_clear(gfx, SOLAR_OS_GFX_COLOR_WHITE);
     solar_os_gfx_set_color(gfx, SOLAR_OS_GFX_COLOR_BLACK);
-    solar_os_gfx_rect(gfx, 0, 0, width, height);
+    solar_os_gfx_set_line_style(gfx, SOLAR_OS_GFX_LINE_DOTTED);
+    solar_os_gfx_line(gfx, 0, 0, width - 1, 0);
+    solar_os_gfx_line(gfx, 0, height - 1, width - 1, height - 1);
+    solar_os_gfx_line(gfx, 0, 0, 0, height - 1);
+    solar_os_gfx_line(gfx, width - 1, 0, width - 1, height - 1);
 
     for (uint8_t column = 1U; column < launcher.config.columns; column++) {
         const int x = (int)column * width / launcher.config.columns;
@@ -162,6 +166,7 @@ static void launcher_render(solar_os_context_t *ctx)
         const int y = (int)row * height / launcher.config.rows;
         solar_os_gfx_line(gfx, 0, y, width - 1, y);
     }
+    solar_os_gfx_set_line_style(gfx, SOLAR_OS_GFX_LINE_SOLID);
 
     for (size_t i = 0U; i < launcher.config.item_count; i++) {
         int x0 = 0;
@@ -173,37 +178,44 @@ static void launcher_render(solar_os_context_t *ctx)
         const int cell_height = y1 - y0;
         const bool selected = i == launcher.selected;
         if (selected && cell_width > 5 && cell_height > 5) {
-            solar_os_gfx_rect(gfx, x0 + 2, y0 + 2,
-                              cell_width - 4, cell_height - 4);
+            solar_os_gfx_set_color(gfx, SOLAR_OS_GFX_COLOR_LIGHT);
+            solar_os_gfx_fill_rect(gfx, x0 + 2, y0 + 2,
+                                   cell_width - 4, cell_height - 4);
+            solar_os_gfx_set_color(gfx, SOLAR_OS_GFX_COLOR_BLACK);
         }
 
         const bool show_title = cell_width >= 24 && cell_height >= 24;
-        const int title_height = show_title ? 15 : 0;
+        const bool large_title = selected && cell_height >= 56;
+        const int title_height = show_title ? (large_title ? 14 : 12) : 0;
+        const int title_gap = show_title ? 3 : 0;
         int available = cell_width - 10;
-        if (cell_height - title_height - 8 < available) {
-            available = cell_height - title_height - 8;
+        if (cell_height - title_height - title_gap - 6 < available) {
+            available = cell_height - title_height - title_gap - 6;
         }
         const solar_os_gfx_icon_size_t icon_size =
             launcher_icon_size(available, selected ? 64 : 32);
         const int icon_pixels = (int)icon_size;
         const int icon_x = x0 + (cell_width - icon_pixels) / 2;
-        const int icon_area_height = cell_height - title_height;
-        int icon_y = y0 + (icon_area_height - icon_pixels) / 2;
-        if (icon_y < y0 + 2) {
-            icon_y = y0 + 2;
+        const int group_height = icon_pixels + title_gap + title_height;
+        int icon_y = y0 + (cell_height - group_height) / 2;
+        if (icon_y < y0 + 1) {
+            icon_y = y0 + 1;
         }
         solar_os_gfx_icon(gfx, icon_x, icon_y,
                           launcher.config.items[i].icon, icon_size);
 
         if (show_title) {
-            solar_os_gfx_set_font(gfx, selected && cell_height >= 56 ?
+            solar_os_gfx_set_font(gfx, large_title ?
                 SOLAR_OS_GFX_FONT_BOLD_14 : SOLAR_OS_GFX_FONT_SMALL);
             char title[LAUNCHER_NAME_MAX];
             launcher_fit_title(gfx, launcher.config.items[i].name,
                                cell_width - 6, title, sizeof(title));
             const int title_width = (int)solar_os_gfx_text_width(gfx, title);
             const int title_x = x0 + (cell_width - title_width) / 2;
-            solar_os_gfx_text(gfx, title_x, y1 - 5, title);
+            const int title_descent = large_title ? 3 : 2;
+            const int title_y = icon_y + icon_pixels + title_gap +
+                title_height - title_descent;
+            solar_os_gfx_text(gfx, title_x, title_y, title);
         }
     }
 

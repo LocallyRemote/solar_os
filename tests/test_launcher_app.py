@@ -77,6 +77,16 @@ class LauncherAppTest(unittest.TestCase):
             LAUNCHER,
         )
 
+    def test_grid_selection_and_title_use_subtle_compact_styling(self):
+        self.assertIn("SOLAR_OS_GFX_LINE_DOTTED", LAUNCHER)
+        self.assertIn("SOLAR_OS_GFX_COLOR_LIGHT", LAUNCHER)
+        self.assertNotIn("solar_os_gfx_rect(gfx, x0 + 2, y0 + 2", LAUNCHER)
+        self.assertIn(
+            "const int group_height = icon_pixels + title_gap + title_height;",
+            LAUNCHER,
+        )
+        self.assertIn("const int title_y = icon_y + icon_pixels + title_gap +", LAUNCHER)
+
     def test_launcher_is_registered_as_a_graphics_package(self):
         self.assertIn('APP_ENTRY("launcher"', REGISTRY)
         self.assertIn("SOLAR_OS_APP_CAP_GRAPHICS | SOLAR_OS_APP_CAP_DISPLAY", REGISTRY)
