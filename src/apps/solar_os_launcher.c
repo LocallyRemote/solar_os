@@ -14,6 +14,7 @@
 #include "solar_os_keys.h"
 #include "solar_os_launcher_layout.h"
 #include "solar_os_memory.h"
+#include "solar_os_sessions.h"
 #include "solar_os_shell.h"
 #include "solar_os_storage.h"
 
@@ -174,7 +175,7 @@ static void launcher_render(solar_os_context_t *ctx)
                               cell_width - 4, cell_height - 4);
         }
 
-        const bool show_title = selected && cell_width >= 24 && cell_height >= 24;
+        const bool show_title = cell_width >= 24 && cell_height >= 24;
         const int title_height = show_title ? 15 : 0;
         int available = cell_width - 10;
         if (cell_height - title_height - 8 < available) {
@@ -193,7 +194,7 @@ static void launcher_render(solar_os_context_t *ctx)
                           launcher.config.items[i].icon, icon_size);
 
         if (show_title) {
-            solar_os_gfx_set_font(gfx, cell_height >= 56 ?
+            solar_os_gfx_set_font(gfx, selected && cell_height >= 56 ?
                 SOLAR_OS_GFX_FONT_BOLD_14 : SOLAR_OS_GFX_FONT_SMALL);
             char title[LAUNCHER_NAME_MAX];
             launcher_fit_title(gfx, launcher.config.items[i].name,
@@ -383,7 +384,8 @@ static void launcher_activate(solar_os_context_t *ctx)
     if (launcher.selected >= launcher.config.item_count) {
         return;
     }
-    solar_os_shell_session_t *session = solar_os_context_shell_session(ctx);
+    solar_os_shell_session_t *session =
+        solar_os_sessions_context_shell_session(ctx);
     if (session == NULL) {
         solar_os_context_finish(ctx, 1, "launcher: no shell session");
         return;
