@@ -23,6 +23,13 @@ int main(void)
     assert(!solar_os_ble_keyboard_scan_reconnect_bda_matches(
         NULL, same_bda));
 
+    assert(solar_os_ble_keyboard_scan_reconnect_event_is_connectable(0x00U));
+    assert(solar_os_ble_keyboard_scan_reconnect_event_is_connectable(0x01U));
+    assert(!solar_os_ble_keyboard_scan_reconnect_event_is_connectable(0x02U));
+    assert(!solar_os_ble_keyboard_scan_reconnect_event_is_connectable(0x03U));
+    assert(!solar_os_ble_keyboard_scan_reconnect_event_is_connectable(0x04U));
+    assert(!solar_os_ble_keyboard_scan_reconnect_event_is_connectable(0xffU));
+
     assert(!solar_os_ble_keyboard_scan_candidate_should_replace(
         false, false, 0, false, false, -20));
     assert(solar_os_ble_keyboard_scan_candidate_should_replace(

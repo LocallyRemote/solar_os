@@ -355,6 +355,38 @@ class RuntimeBoundaryTest(unittest.TestCase):
         self.assertIn("bda_matches_remembered_peer", candidate)
         self.assertIn("BLE_KEYBOARD_RECONNECT_BACKOFF_MAX_MS", reconnect)
 
+    def test_ble_reconnect_requires_connectable_advertisement_and_stops_scan(self):
+        ble = (ROOT / "src/services/solar_os_ble_keyboard.c").read_text(
+            encoding="utf-8"
+        )
+        candidate_start = ble.index("static void consider_candidate(")
+        candidate_end = ble.index("static const char *key_type_name(", candidate_start)
+        candidate = ble[candidate_start:candidate_end]
+        callback_start = ble.index("static void gap_callback(")
+        callback_end = ble.index("static void hidh_callback(", callback_start)
+        callback = ble[callback_start:callback_end]
+        scan_start = ble.index("static esp_err_t run_keyboard_scan(")
+        scan_end = ble.index(
+            "static esp_err_t close_connected_keyboard_for_pairing(",
+            scan_start,
+        )
+        scan = ble[scan_start:scan_end]
+
+        self.assertIn(
+            "solar_os_ble_keyboard_scan_reconnect_event_is_connectable",
+            candidate,
+        )
+        self.assertIn("reconnect_scan_stop_requested", candidate)
+        self.assertIn("esp_ble_gap_stop_scanning()", candidate)
+        self.assertIn("ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT", callback)
+        self.assertIn("xSemaphoreGive(scan_stop_done_sem)", callback)
+        self.assertIn("xSemaphoreTake(scan_stop_done_sem", scan)
+        self.assertLess(
+            scan.index("xSemaphoreTake(scan_stop_done_sem"),
+            scan.rindex("active_scan_mode = BLE_KEYBOARD_SCAN_DISCOVERY;"),
+        )
+        self.assertNotIn("open_keyboard(", callback)
+
     def test_audio_stream_direction_and_shell_capabilities(self):
         audio = (ROOT / "src/services/solar_os_audio.c").read_text(
             encoding="utf-8"

@@ -116,6 +116,7 @@ typedef struct {
 static const char *TAG = "ble_keyboard";
 
 static SemaphoreHandle_t scan_done_sem;
+static SemaphoreHandle_t scan_stop_done_sem;
 static SemaphoreHandle_t close_done_sem;
 static SemaphoreHandle_t status_mutex;
 static SemaphoreHandle_t gatt_mutex;
@@ -146,6 +147,8 @@ static bool reconnect_suppressed_for_pairing;
 static bool reconnect_suppressed_for_forget;
 static bool pairing_retry_pending;
 static bool pairing_scan_stop_requested;
+static bool reconnect_scan_stop_requested;
+static bool reconnect_scan_stop_succeeded;
 static ble_keyboard_scan_mode_t active_scan_mode = BLE_KEYBOARD_SCAN_DISCOVERY;
 static bool caps_lock;
 static uint8_t previous_keys[BLE_KEYBOARD_MAX_KEYS];
@@ -506,6 +509,9 @@ static bool stop_reconnect_task(const char *reason, uint32_t timeout_ms)
                       "%s: stopping reconnect scan",
                       reason != NULL ? reason : "ble");
         (void)esp_ble_gap_stop_scanning();
+        if (scan_done_sem != NULL) {
+            xSemaphoreGive(scan_done_sem);
+        }
         active_scan_mode = BLE_KEYBOARD_SCAN_DISCOVERY;
         set_status(BLE_KEYBOARD_IDLE, "%s", reason != NULL ? reason : "idle");
     }
@@ -627,6 +633,9 @@ static esp_err_t ensure_runtime_objects(void)
     if (scan_done_sem == NULL) {
         scan_done_sem = xSemaphoreCreateBinary();
     }
+    if (scan_stop_done_sem == NULL) {
+        scan_stop_done_sem = xSemaphoreCreateBinary();
+    }
     if (close_done_sem == NULL) {
         close_done_sem = xSemaphoreCreateBinary();
     }
@@ -641,6 +650,7 @@ static esp_err_t ensure_runtime_objects(void)
     }
     if (status_mutex == NULL ||
         scan_done_sem == NULL ||
+        scan_stop_done_sem == NULL ||
         close_done_sem == NULL ||
         gatt_mutex == NULL ||
         gatt_op_sem == NULL) {
@@ -1576,6 +1586,10 @@ static void consider_candidate(const esp_ble_gap_cb_param_t *param)
         if (!bda_matches_remembered_peer(param->scan_rst.bda)) {
             return;
         }
+        if (!solar_os_ble_keyboard_scan_reconnect_event_is_connectable(
+                (uint8_t)param->scan_rst.ble_evt_type)) {
+            return;
+        }
 
         /* A remembered peer is already known to be the keyboard. */
         candidate.valid = true;
@@ -1585,6 +1599,17 @@ static void consider_candidate(const esp_ble_gap_cb_param_t *param)
         candidate.rssi = param->scan_rst.rssi;
         candidate.appearance = appearance;
         strlcpy(candidate.name, name, sizeof(candidate.name));
+
+        if (!reconnect_scan_stop_requested) {
+            reconnect_scan_stop_requested = true;
+            const esp_err_t stop_ret = esp_ble_gap_stop_scanning();
+            if (stop_ret != ESP_OK) {
+                SOLAR_OS_LOGW(TAG,
+                              "reconnect scan stop request failed: %s",
+                              esp_err_to_name(stop_ret));
+                reconnect_scan_stop_requested = false;
+            }
+        }
         return;
     }
 
@@ -1771,6 +1796,19 @@ static void gap_callback(esp_gap_ble_cb_event_t event, esp_ble_gap_cb_param_t *p
     switch (event) {
     case ESP_GAP_BLE_SCAN_PARAM_SET_COMPLETE_EVT:
         xSemaphoreGive(scan_done_sem);
+        break;
+
+    case ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT:
+        if (reconnect_scan_stop_requested) {
+            reconnect_scan_stop_succeeded =
+                param->scan_stop_cmpl.status == ESP_BT_STATUS_SUCCESS;
+            if (!reconnect_scan_stop_succeeded) {
+                SOLAR_OS_LOGW(TAG,
+                              "reconnect scan stop failed: status=0x%x",
+                              param->scan_stop_cmpl.status);
+            }
+            xSemaphoreGive(scan_stop_done_sem);
+        }
         break;
 
     case ESP_GAP_BLE_SCAN_RESULT_EVT:
@@ -2788,8 +2826,12 @@ static esp_err_t run_keyboard_scan(ble_keyboard_scan_mode_t mode)
 {
     while (xSemaphoreTake(scan_done_sem, 0) == pdTRUE) {
     }
+    while (xSemaphoreTake(scan_stop_done_sem, 0) == pdTRUE) {
+    }
 
     memset(&candidate, 0, sizeof(candidate));
+    reconnect_scan_stop_requested = false;
+    reconnect_scan_stop_succeeded = false;
     active_scan_mode = mode;
     set_status(BLE_KEYBOARD_SCANNING, "%s", scan_mode_status(mode));
     SOLAR_OS_LOGI(TAG, "%s scan start", scan_mode_log_name(mode));
@@ -2817,7 +2859,48 @@ static esp_err_t run_keyboard_scan(ble_keyboard_scan_mode_t mode)
         return ret;
     }
 
-    if (xSemaphoreTake(scan_done_sem, pdMS_TO_TICKS((BLE_KEYBOARD_SCAN_SECONDS + 2) * 1000)) != pdTRUE) {
+    const TickType_t scan_timeout =
+        pdMS_TO_TICKS((BLE_KEYBOARD_SCAN_SECONDS + 2) * 1000);
+    if (mode == BLE_KEYBOARD_SCAN_RECONNECT) {
+        const TickType_t deadline = xTaskGetTickCount() + scan_timeout;
+        for (;;) {
+            const TickType_t now = xTaskGetTickCount();
+            if ((int32_t)(deadline - now) <= 0) {
+                SOLAR_OS_LOGE(TAG, "scan timeout");
+                esp_ble_gap_stop_scanning();
+                set_status(BLE_KEYBOARD_FAILED, "scan timeout");
+                active_scan_mode = BLE_KEYBOARD_SCAN_DISCOVERY;
+                reconnect_scan_stop_requested = false;
+                return ESP_ERR_TIMEOUT;
+            }
+
+            if (reconnect_scan_stop_requested) {
+                if (xSemaphoreTake(scan_stop_done_sem, deadline - now) != pdTRUE) {
+                    SOLAR_OS_LOGE(TAG, "reconnect scan stop timeout");
+                    set_status(BLE_KEYBOARD_FAILED, "scan stop timeout");
+                    active_scan_mode = BLE_KEYBOARD_SCAN_DISCOVERY;
+                    reconnect_scan_stop_requested = false;
+                    return ESP_ERR_TIMEOUT;
+                }
+                if (!reconnect_scan_stop_succeeded) {
+                    set_status(BLE_KEYBOARD_FAILED, "scan stop failed");
+                    active_scan_mode = BLE_KEYBOARD_SCAN_DISCOVERY;
+                    reconnect_scan_stop_requested = false;
+                    return ESP_FAIL;
+                }
+                break;
+            }
+
+            TickType_t wait_ticks = deadline - now;
+            if (wait_ticks > pdMS_TO_TICKS(100)) {
+                wait_ticks = pdMS_TO_TICKS(100);
+            }
+            if (xSemaphoreTake(scan_done_sem, wait_ticks) == pdTRUE &&
+                !reconnect_scan_stop_requested) {
+                break;
+            }
+        }
+    } else if (xSemaphoreTake(scan_done_sem, scan_timeout) != pdTRUE) {
         SOLAR_OS_LOGE(TAG, "scan timeout");
         esp_ble_gap_stop_scanning();
         set_status(BLE_KEYBOARD_FAILED, "scan timeout");
@@ -2825,6 +2908,7 @@ static esp_err_t run_keyboard_scan(ble_keyboard_scan_mode_t mode)
         return ESP_ERR_TIMEOUT;
     }
     active_scan_mode = BLE_KEYBOARD_SCAN_DISCOVERY;
+    reconnect_scan_stop_requested = false;
 
     if (!candidate.valid) {
         SOLAR_OS_LOGW(TAG,
