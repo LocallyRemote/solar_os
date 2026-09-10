@@ -9344,6 +9344,19 @@ esp_err_t solar_os_shell_session_submit_command(solar_os_context_t *ctx,
     return ESP_OK;
 }
 
+esp_err_t solar_os_shell_execute_command(solar_os_context_t *ctx,
+                                         const char *command)
+{
+    if (ctx == NULL || command == NULL || command[0] == '\0') {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (strlen(command) >= SHELL_INPUT_MAX) {
+        return ESP_ERR_INVALID_SIZE;
+    }
+    (void)shell_execute_line(ctx, command, false, NULL, 0U);
+    return ESP_OK;
+}
+
 void solar_os_shell_session_prompt(solar_os_context_t *ctx, solar_os_shell_session_t *session)
 {
     if (ctx == NULL || session == NULL) {

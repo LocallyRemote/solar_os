@@ -918,39 +918,6 @@ static solar_os_session_entry_t *session_find_by_io(const solar_os_shell_io_t *i
     return NULL;
 }
 
-solar_os_shell_session_t *solar_os_sessions_context_shell_session(
-    solar_os_context_t *ctx)
-{
-    if (ctx == NULL) {
-        return NULL;
-    }
-    solar_os_shell_session_t *shell_session =
-        solar_os_context_shell_session(ctx);
-    if (shell_session != NULL) {
-        return shell_session;
-    }
-
-    solar_os_session_entry_t *current =
-        session_find_by_io(solar_os_context_shell_io(ctx));
-    if (current == NULL) {
-        current = session_find_by_terminal(solar_os_context_terminal(ctx));
-    }
-    solar_os_session_entry_t *shell = session_return_shell(current);
-    if (shell != NULL && shell->shell_session != NULL) {
-        return shell->shell_session;
-    }
-
-    for (size_t i = 0U; current != NULL && i < SOLAR_OS_SESSION_MAX; i++) {
-        solar_os_session_entry_t *candidate = &session_state.sessions[i];
-        if (candidate->used && candidate->app == solar_os_shell_app() &&
-            candidate->shell_session != NULL &&
-            session_uses_same_display(current, candidate)) {
-            return candidate->shell_session;
-        }
-    }
-    return NULL;
-}
-
 void solar_os_sessions_attach_tui(solar_os_shell_io_t *io, solar_os_tui_t *tui)
 {
     solar_os_session_entry_t *session = session_find_by_io(io);

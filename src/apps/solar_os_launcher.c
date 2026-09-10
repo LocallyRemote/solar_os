@@ -9,13 +9,15 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
+#include "solar_os_app_registry.h"
 #include "solar_os_gfx.h"
 #include "solar_os_json.h"
 #include "solar_os_keys.h"
 #include "solar_os_launcher_layout.h"
 #include "solar_os_memory.h"
-#include "solar_os_sessions.h"
 #include "solar_os_shell.h"
+#include "solar_os_shell_launch.h"
+#include "solar_os_shell_parse.h"
 #include "solar_os_storage.h"
 
 #define LAUNCHER_CONFIG_FILE "launcher.json"
@@ -379,30 +381,11 @@ static void launcher_finish_error(solar_os_context_t *ctx,
     solar_os_context_finish(ctx, 1, message);
 }
 
-static void launcher_activate(solar_os_context_t *ctx)
+static esp_err_t launcher_make_requested_app_child(solar_os_context_t *ctx)
 {
-    if (launcher.selected >= launcher.config.item_count) {
-        return;
-    }
-    solar_os_shell_session_t *session =
-        solar_os_sessions_context_shell_session(ctx);
-    if (session == NULL) {
-        solar_os_context_finish(ctx, 1, "launcher: no shell session");
-        return;
-    }
-    const esp_err_t err = solar_os_shell_session_submit_command(
-        ctx, session, launcher.config.items[launcher.selected].command);
-    if (err != ESP_OK) {
-        launcher_finish_error(ctx, "command failed", err);
-        return;
-    }
     if (ctx->requested_app == NULL) {
-        if (!ctx->exit_requested) {
-            solar_os_context_finish(ctx, 0, NULL);
-        }
-        return;
+        return ESP_OK;
     }
-
     const solar_os_app_t *requested_app = ctx->requested_app;
     const int argc = ctx->argc;
     char argv_storage[SOLAR_OS_APP_ARG_MAX][SOLAR_OS_APP_ARG_LEN];
@@ -411,10 +394,90 @@ static void launcher_activate(solar_os_context_t *ctx)
         strlcpy(argv_storage[i], ctx->argv[i], sizeof(argv_storage[i]));
         argv[i] = argv_storage[i];
     }
-    const esp_err_t launch_err = solar_os_context_request_launch_ex(
+    return solar_os_context_request_launch_ex(
         ctx, requested_app, argc, argv, SOLAR_OS_LAUNCH_CHILD_RETURN);
-    if (launch_err != ESP_OK) {
-        launcher_finish_error(ctx, "launch failed", launch_err);
+}
+
+static esp_err_t launcher_launch_script(solar_os_context_t *ctx,
+                                        const char *argument)
+{
+    char path[SOLAR_OS_STORAGE_PATH_MAX];
+    esp_err_t err = solar_os_shell_resolve_path(ctx, argument,
+                                                path, sizeof(path));
+    if (err != ESP_OK) {
+        return err;
+    }
+    (void)solar_os_shell_run_script(ctx, path, argument, true);
+    return launcher_make_requested_app_child(ctx);
+}
+
+static esp_err_t launcher_launch_app(solar_os_context_t *ctx,
+                                     const solar_os_app_registry_entry_t *entry,
+                                     int argc,
+                                     char **argv)
+{
+    if (entry == NULL || entry->app == NULL || argc < entry->min_argc ||
+        (entry->max_argc != 0U && argc > entry->max_argc)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    char resolved_path[SOLAR_OS_STORAGE_PATH_MAX];
+    char *launch_argv[SOLAR_OS_APP_ARG_MAX] = {0};
+    for (int i = 0; i < argc; i++) {
+        if (strlen(argv[i]) >= SOLAR_OS_APP_ARG_LEN) {
+            return ESP_ERR_INVALID_SIZE;
+        }
+        launch_argv[i] = argv[i];
+    }
+    const int path_arg = solar_os_shell_launch_path_arg(entry->name, argc, argv);
+    if (path_arg >= 0) {
+        const esp_err_t err = solar_os_shell_resolve_path(
+            ctx, argv[path_arg], resolved_path, sizeof(resolved_path));
+        if (err != ESP_OK) {
+            return err;
+        }
+        launch_argv[path_arg] = resolved_path;
+    }
+    return solar_os_context_request_launch_ex(ctx, entry->app, argc, launch_argv,
+                                              SOLAR_OS_LAUNCH_CHILD_RETURN);
+}
+
+static void launcher_activate(solar_os_context_t *ctx)
+{
+    if (launcher.selected >= launcher.config.item_count) {
+        return;
+    }
+
+    char command[LAUNCHER_COMMAND_MAX];
+    char *argv[SOLAR_OS_APP_ARG_MAX] = {0};
+    strlcpy(command, launcher.config.items[launcher.selected].command,
+            sizeof(command));
+    const solar_os_shell_parse_result_t parsed =
+        solar_os_shell_tokenize(command, argv, SOLAR_OS_APP_ARG_MAX);
+    if (parsed.error != SOLAR_OS_SHELL_PARSE_OK || parsed.argc == 0) {
+        launcher_finish_error(ctx, "invalid command", ESP_ERR_INVALID_ARG);
+        return;
+    }
+
+    esp_err_t err = ESP_OK;
+    const solar_os_app_registry_entry_t *entry =
+        solar_os_app_registry_find(argv[0]);
+    if (entry != NULL && entry->app != NULL) {
+        err = launcher_launch_app(ctx, entry, parsed.argc, argv);
+    } else if (parsed.argc == 1 && solar_os_shell_path_is_script(argv[0])) {
+        err = launcher_launch_script(ctx, argv[0]);
+    } else {
+        err = solar_os_shell_execute_command(
+            ctx, launcher.config.items[launcher.selected].command);
+        if (err == ESP_OK) {
+            err = launcher_make_requested_app_child(ctx);
+        }
+        if (err == ESP_OK && ctx->requested_app == NULL && !ctx->exit_requested) {
+            solar_os_context_finish(ctx, 0, NULL);
+        }
+    }
+    if (err != ESP_OK) {
+        launcher_finish_error(ctx, "command failed", err);
     }
 }
 

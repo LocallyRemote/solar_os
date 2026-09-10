@@ -28,8 +28,6 @@ const solar_os_app_t *solar_os_sessions_foreground_app(void);
 solar_os_terminal_t *solar_os_sessions_foreground_terminal(void);
 bool solar_os_sessions_foreground_is_shell(void);
 bool solar_os_sessions_has_display_shell(void);
-solar_os_shell_session_t *solar_os_sessions_context_shell_session(
-    solar_os_context_t *ctx);
 void solar_os_sessions_set_status_bar(const solar_os_status_bar_t *status);
 esp_err_t solar_os_sessions_set_terminal_orientation(solar_os_terminal_t *terminal,
                                                      uint16_t degrees);
