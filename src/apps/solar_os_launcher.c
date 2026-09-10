@@ -316,24 +316,34 @@ static esp_err_t launcher_write_default_config(const char *path)
         return err;
     }
     (void)solar_os_storage_remove(temporary);
+    const size_t length = sizeof(launcher_default_config) - 1U;
+    char *staged = solar_os_memory_alloc(sizeof(launcher_default_config),
+                                         SOLAR_OS_MEMORY_INTERNAL_CRITICAL,
+                                         "launcher.default");
+    if (staged == NULL) {
+        return ESP_ERR_NO_MEM;
+    }
+    // Keep both sides of flash filesystem I/O in internal RAM. The embedded
+    // default itself is DROM-backed, and some tasks may use external stacks.
+    memcpy(staged, launcher_default_config, length);
     FILE *file = fopen(temporary, "wb");
     if (file == NULL) {
+        solar_os_memory_free(staged);
         return ESP_FAIL;
     }
-    const size_t length = strlen(launcher_default_config);
-    err = fwrite(launcher_default_config, 1U, length, file) == length ?
+    err = fwrite(staged, 1U, length, file) == length ?
         solar_os_storage_sync_file(file) : ESP_FAIL;
     if (fclose(file) != 0 && err == ESP_OK) {
         err = ESP_FAIL;
     }
     if (err == ESP_OK) {
-        char verify[sizeof(launcher_default_config)];
         size_t verify_len = 0U;
-        err = solar_os_storage_read_file(temporary, verify, sizeof(verify),
+        err = solar_os_storage_read_file(temporary, staged,
+                                         sizeof(launcher_default_config),
                                          &verify_len);
         if (err == ESP_OK &&
             (verify_len != length ||
-             memcmp(verify, launcher_default_config, length) != 0)) {
+             memcmp(staged, launcher_default_config, length) != 0)) {
             err = ESP_ERR_INVALID_CRC;
         }
     }
@@ -343,6 +353,7 @@ static esp_err_t launcher_write_default_config(const char *path)
     if (err != ESP_OK) {
         (void)solar_os_storage_remove(temporary);
     }
+    solar_os_memory_free(staged);
     return err;
 }
 

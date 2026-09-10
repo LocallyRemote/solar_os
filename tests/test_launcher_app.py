@@ -44,8 +44,11 @@ class LauncherAppTest(unittest.TestCase):
         self.assertEqual(len(parsed["items"]), 6)
 
     def test_default_config_is_verified_and_atomically_replaced(self):
+        self.assertIn("SOLAR_OS_MEMORY_INTERNAL_CRITICAL", LAUNCHER)
+        self.assertIn("memcpy(staged, launcher_default_config, length)", LAUNCHER)
+        self.assertIn("fwrite(staged, 1U, length, file)", LAUNCHER)
         self.assertIn("solar_os_storage_sync_file(file)", LAUNCHER)
-        self.assertIn("memcmp(verify, launcher_default_config, length)", LAUNCHER)
+        self.assertIn("memcmp(staged, launcher_default_config, length)", LAUNCHER)
         self.assertIn("solar_os_storage_replace_file(temporary, path, backup)", LAUNCHER)
 
     def test_keyboard_pointer_and_child_return_are_wired(self):
