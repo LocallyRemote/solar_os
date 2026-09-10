@@ -33,6 +33,7 @@ typedef enum {
     WIFI_TUI_RADIO,
     WIFI_TUI_STATION,
     WIFI_TUI_DISCONNECT,
+    WIFI_TUI_REPEATER,
     WIFI_TUI_AP,
     WIFI_TUI_NAT,
     WIFI_TUI_SCAN,
@@ -78,6 +79,7 @@ static const wifi_tui_item_def_t wifi_tui_items[] = {
     [WIFI_TUI_RADIO] = {.label = "radio"},
     [WIFI_TUI_STATION] = {.label = "station"},
     [WIFI_TUI_DISCONNECT] = {.label = "disconnect"},
+    [WIFI_TUI_REPEATER] = {.label = "repeater"},
     [WIFI_TUI_AP] = {.label = "ap"},
     [WIFI_TUI_NAT] = {.label = "nat"},
     [WIFI_TUI_SCAN] = {.label = "scan"},
@@ -107,6 +109,27 @@ static void wifi_tui_nat_value(const solar_os_wifi_status_t *status,
         snprintf(buffer, buffer_len, "error %s", solar_os_shell_error_text(status->nat_last_error));
     } else {
         strlcpy(buffer, "waiting", buffer_len);
+    }
+}
+
+static void wifi_tui_repeater_value(const solar_os_wifi_status_t *status,
+                                    char *buffer,
+                                    size_t buffer_len)
+{
+    if (!status->repeater_enabled) {
+        strlcpy(buffer, "off", buffer_len);
+    } else if (status->repeater_active) {
+        snprintf(buffer,
+                 buffer_len,
+                 "active %u client%s",
+                 (unsigned)status->repeater_learned_clients,
+                 status->repeater_learned_clients == 1U ? "" : "s");
+    } else if (!status->connected || !status->has_ip) {
+        strlcpy(buffer, "waiting upstream", buffer_len);
+    } else if (!status->ap_running) {
+        strlcpy(buffer, "starting ap", buffer_len);
+    } else {
+        strlcpy(buffer, "starting", buffer_len);
     }
 }
 
@@ -141,6 +164,9 @@ static void wifi_tui_current_value(wifi_tui_item_t item,
         break;
     case WIFI_TUI_DISCONNECT:
         strlcpy(buffer, status->connected ? "ready" : "-", buffer_len);
+        break;
+    case WIFI_TUI_REPEATER:
+        wifi_tui_repeater_value(status, buffer, buffer_len);
         break;
     case WIFI_TUI_AP:
         if (status->ap_running) {
@@ -896,6 +922,25 @@ static void wifi_tui_apply_selected(void)
     case WIFI_TUI_DISCONNECT: {
         const esp_err_t err = solar_os_wifi_disconnect();
         wifi_tui_set_status(err == ESP_OK ? "station disconnected" : solar_os_shell_error_text(err));
+        break;
+    }
+    case WIFI_TUI_REPEATER: {
+        const esp_err_t err = status.repeater_enabled ?
+            solar_os_wifi_repeater_stop() : solar_os_wifi_repeater_start();
+        if (err == ESP_OK) {
+            wifi_tui_set_status(status.repeater_enabled ?
+                                "repeater off; station retained" :
+                                "repeater on");
+        } else if (err == ESP_ERR_NOT_FOUND) {
+            wifi_tui_set_status("no saved upstream");
+        } else {
+            char message[WIFI_TUI_STATUS_MAX];
+            snprintf(message,
+                     sizeof(message),
+                     "repeater failed: %s",
+                     solar_os_shell_error_text(err));
+            wifi_tui_set_status(message);
+        }
         break;
     }
     case WIFI_TUI_AP: {

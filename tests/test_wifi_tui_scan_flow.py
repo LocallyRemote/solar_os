@@ -14,6 +14,26 @@ def function(source: str, signature: str, next_signature: str) -> str:
 
 
 class WifiTuiScanFlowTest(unittest.TestCase):
+    def test_repeater_is_visible_and_toggles_the_service(self):
+        current_value = function(
+            TUI,
+            "static void wifi_tui_current_value(",
+            "static size_t wifi_tui_scan_visible_rows(",
+        )
+        apply_selected = function(
+            TUI,
+            "static void wifi_tui_apply_selected(void)",
+            "static esp_err_t wifi_tui_start(",
+        )
+
+        self.assertIn('[WIFI_TUI_REPEATER] = {.label = "repeater"}', TUI)
+        self.assertIn("case WIFI_TUI_REPEATER:", current_value)
+        self.assertIn("wifi_tui_repeater_value(status", current_value)
+        self.assertIn("status.repeater_enabled ?", apply_selected)
+        self.assertIn("solar_os_wifi_repeater_stop()", apply_selected)
+        self.assertIn("solar_os_wifi_repeater_start()", apply_selected)
+        self.assertIn('wifi_tui_set_status("no saved upstream")', apply_selected)
+
     def test_saved_connect_uses_only_the_most_recent_profile(self):
         select_profile = function(
             WIFI,
