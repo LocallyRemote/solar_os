@@ -32,6 +32,22 @@ bool solar_os_ble_keyboard_scan_name_is_keyboard_like(const char *name)
         contains_case_insensitive(name, "keychron");
 }
 
+bool solar_os_ble_keyboard_scan_reconnect_bda_matches(
+    const uint8_t remembered_bda[6],
+    const uint8_t advertised_bda[6])
+{
+    return remembered_bda != NULL && advertised_bda != NULL &&
+        memcmp(remembered_bda, advertised_bda, 6) == 0;
+}
+
+bool solar_os_ble_keyboard_scan_reconnect_event_is_connectable(
+    uint8_t ble_evt_type)
+{
+    /* esp_ble_evt_type_t: ESP_BLE_EVT_CONN_ADV=0x00,
+     * ESP_BLE_EVT_CONN_DIR_ADV=0x01. */
+    return ble_evt_type == 0x00U || ble_evt_type == 0x01U;
+}
+
 bool solar_os_ble_keyboard_scan_candidate_should_replace(
     bool current_valid,
     bool current_keyboard_like,
