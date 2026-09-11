@@ -9,7 +9,11 @@ class BleSleepDeferTest(unittest.TestCase):
     def test_ble_connect_timeout_keeps_deferred_sleep_bounded(self):
         sdkconfig = (ROOT / "sdkconfig.defaults").read_text(encoding="utf-8")
 
-        self.assertIn("CONFIG_BT_BLE_ESTAB_LINK_CONN_TOUT=3", sdkconfig)
+        self.assertIn("CONFIG_BT_NIMBLE_ENABLED=y", sdkconfig)
+        source = (ROOT / "src/services/solar_os_ble_hid.c").read_text(encoding="utf-8")
+        self.assertIn("ble_gap_connect(BLE_OWN_ADDR_PUBLIC, &addr, 3000", source)
+        self.assertIn("ble_gap_conn_cancel()", source)
+        self.assertIn("if (!accepting_opens || hid.active", source)
 
     def test_active_reconnect_defers_sleep_without_changing_pairing(self):
         source = (ROOT / "src/services/solar_os_ble_keyboard.c").read_text(

@@ -343,7 +343,7 @@ class RuntimeBoundaryTest(unittest.TestCase):
         reconnect = ble[reconnect_start:reconnect_end]
         candidate_start = ble.index("static void consider_candidate(")
         candidate_end = ble.index(
-            "static const char *key_type_name(", candidate_start
+            "static bool key_in_report(", candidate_start
         )
         candidate = ble[candidate_start:candidate_end]
 
@@ -362,10 +362,10 @@ class RuntimeBoundaryTest(unittest.TestCase):
             encoding="utf-8"
         )
         candidate_start = ble.index("static void consider_candidate(")
-        candidate_end = ble.index("static const char *key_type_name(", candidate_start)
+        candidate_end = ble.index("static bool key_in_report(", candidate_start)
         candidate = ble[candidate_start:candidate_end]
-        callback_start = ble.index("static void gap_callback(")
-        callback_end = ble.index("static void hidh_callback(", callback_start)
+        callback_start = ble.index("static esp_err_t stop_scanning(")
+        callback_end = ble.index("static const char *keyboard_layout_names", callback_start)
         callback = ble[callback_start:callback_end]
         scan_start = ble.index("static esp_err_t run_keyboard_scan(")
         scan_end = ble.index(
@@ -379,8 +379,8 @@ class RuntimeBoundaryTest(unittest.TestCase):
             candidate,
         )
         self.assertIn("reconnect_scan_stop_requested", candidate)
-        self.assertIn("esp_ble_gap_stop_scanning()", candidate)
-        self.assertIn("ESP_GAP_BLE_SCAN_STOP_COMPLETE_EVT", callback)
+        self.assertIn("stop_scanning()", candidate)
+        self.assertIn("ble_gap_disc_cancel()", callback)
         self.assertIn("xSemaphoreGive(scan_stop_done_sem)", callback)
         self.assertIn("xSemaphoreTake(scan_stop_done_sem", scan)
         self.assertLess(
@@ -394,7 +394,7 @@ class RuntimeBoundaryTest(unittest.TestCase):
             encoding="utf-8"
         )
         candidate_start = ble.index("static void consider_candidate(")
-        candidate_end = ble.index("static const char *key_type_name(", candidate_start)
+        candidate_end = ble.index("static bool key_in_report(", candidate_start)
         candidate = ble[candidate_start:candidate_end]
         open_start = ble.index("static esp_err_t scan_and_open_keyboard(")
         open_end = ble.index("static void scan_task(", open_start)

@@ -1,7 +1,7 @@
 #pragma once
 
 /* Private service/backend boundary. Implementations must not expose host-stack
- * types here. Currently implemented by the Bluedroid GATT adapter and keyboard
+ * types here. Currently implemented by the NimBLE GATT adapter and keyboard
  * lifecycle/profile code. */
 #include "solar_os_ble.h"
 
@@ -46,7 +46,7 @@ esp_err_t solar_os_ble_backend_prepare_sleep(uint32_t timeout_ms);
 bool solar_os_ble_backend_sleep_prepare_ready(void);
 void solar_os_ble_backend_resume(void);
 
-/* register prepares the adapter; each connect owns a separate registration.
+/* register prepares the adapter; each connect owns a separate epoch.
  * RETIRED is a barrier: no further event for that epoch may be delivered.
  * A cancelled/timed-out request must never be relabelled with a new token. */
 esp_err_t solar_os_ble_backend_register(void);

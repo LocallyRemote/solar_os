@@ -20,3 +20,6 @@ dependencies.lock
 .vscode/ipch/
 
 scripts/__pycache__/
+tests/__pycache__/
+tests/host/ble_nimble_test
+tests/host/ble_hid_test

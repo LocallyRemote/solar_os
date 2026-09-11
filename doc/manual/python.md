@@ -1116,9 +1116,9 @@ An explicitly caught error does not end the runtime or release its session.
 
 The current service retains at most 24 services and 64 characteristics per
 service. Reads return at most the first 128 bytes; writes accept 1..128 bytes
-and remain subject to the peer/stack's negotiated-MTU behavior. `mtu` reports
-the latest successful exchange; connect does not wait separately for that
-exchange. There is no script MTU setter, automatic write chunking, notification
+and must fit within the negotiated MTU minus three bytes. `mtu` reports
+the negotiated value; connection setup performs MTU exchange before discovery.
+There is no script MTU setter, automatic write chunking, notification
 subscription, GATT server, or advertising API yet.
 
 ```python

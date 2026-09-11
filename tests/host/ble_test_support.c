@@ -2,6 +2,7 @@
 #include <errno.h>
 #include <string.h>
 #include <time.h>
+#include <stdlib.h>
 #include <freertos/semphr.h>
 #include "esp_err.h"
 
@@ -18,6 +19,8 @@ SemaphoreHandle_t xSemaphoreCreateBinaryStatic(StaticSemaphore_t *sem)
     assert(pthread_cond_init(&sem->changed, NULL) == 0);
     sem->count = 0;
     sem->mutex = false;
+    sem->recursive = false;
+    sem->depth = 0;
     return sem;
 }
 
@@ -34,6 +37,11 @@ int xSemaphoreTake(SemaphoreHandle_t sem, unsigned timeout)
     assert(sem != NULL);
     pthread_mutex_lock(&sem->lock);
     if (sem->mutex && sem->count == 0) {
+        if (sem->recursive && pthread_equal(sem->owner, pthread_self())) {
+            ++sem->depth;
+            pthread_mutex_unlock(&sem->lock);
+            return pdTRUE;
+        }
         assert(!pthread_equal(sem->owner, pthread_self()));
     }
     struct timespec deadline;
@@ -56,6 +64,7 @@ int xSemaphoreTake(SemaphoreHandle_t sem, unsigned timeout)
     if (success) {
         sem->count = 0;
         sem->owner = pthread_self();
+        sem->depth = 1;
     }
     pthread_mutex_unlock(&sem->lock);
     return success ? pdTRUE : pdFALSE;
@@ -67,11 +76,29 @@ int xSemaphoreGive(SemaphoreHandle_t sem)
     pthread_mutex_lock(&sem->lock);
     if (sem->mutex) {
         assert(sem->count == 0 && pthread_equal(sem->owner, pthread_self()));
+        if (sem->recursive && --sem->depth) {
+            pthread_mutex_unlock(&sem->lock);
+            return pdTRUE;
+        }
     }
     sem->count = 1;
     pthread_cond_signal(&sem->changed);
     pthread_mutex_unlock(&sem->lock);
     return pdTRUE;
+}
+
+SemaphoreHandle_t xSemaphoreCreateRecursiveMutexStatic(StaticSemaphore_t *sem)
+{
+    xSemaphoreCreateMutexStatic(sem);
+    sem->recursive = true;
+    return sem;
+}
+
+SemaphoreHandle_t xSemaphoreCreateBinary(void)
+{
+    StaticSemaphore_t *sem = malloc(sizeof(*sem));
+    assert(sem);
+    return xSemaphoreCreateBinaryStatic(sem);
 }
 
 size_t strlcpy(char *dst, const char *src, size_t size)
