@@ -342,7 +342,9 @@ class RuntimeBoundaryTest(unittest.TestCase):
         reconnect_end = ble.index("static void schedule_reconnect(", reconnect_start)
         reconnect = ble[reconnect_start:reconnect_end]
         candidate_start = ble.index("static void consider_candidate(")
-        candidate_end = ble.index("static const char *key_type_name(", candidate_start)
+        candidate_end = ble.index(
+            "static const char *key_type_name(", candidate_start
+        )
         candidate = ble[candidate_start:candidate_end]
 
         self.assertIn(
@@ -386,6 +388,27 @@ class RuntimeBoundaryTest(unittest.TestCase):
             scan.rindex("active_scan_mode = BLE_KEYBOARD_SCAN_DISCOVERY;"),
         )
         self.assertNotIn("open_keyboard(", callback)
+
+    def test_ble_reconnect_preserves_matched_candidate_until_open(self):
+        ble = (ROOT / "src/services/solar_os_ble_keyboard.c").read_text(
+            encoding="utf-8"
+        )
+        candidate_start = ble.index("static void consider_candidate(")
+        candidate_end = ble.index("static const char *key_type_name(", candidate_start)
+        candidate = ble[candidate_start:candidate_end]
+        open_start = ble.index("static esp_err_t scan_and_open_keyboard(")
+        open_end = ble.index("static void scan_task(", open_start)
+        open_path = ble[open_start:open_end]
+
+        self.assertLess(
+            candidate.index("if (candidate_frozen)"),
+            candidate.index("bda_matches_remembered_peer"),
+        )
+        self.assertIn("candidate_frozen = true;", candidate)
+        self.assertIn("ble_keyboard_candidate_t selected_candidate = {0};", open_path)
+        self.assertIn("run_keyboard_scan(mode, &selected_candidate)", open_path)
+        self.assertIn("open_keyboard(selected_candidate.bda", open_path)
+        self.assertNotIn("open_keyboard(candidate.bda", open_path)
 
     def test_audio_stream_direction_and_shell_capabilities(self):
         audio = (ROOT / "src/services/solar_os_audio.c").read_text(

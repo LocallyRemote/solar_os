@@ -49,6 +49,7 @@ bool solar_os_ble_keyboard_scan_reconnect_event_is_connectable(
 }
 
 bool solar_os_ble_keyboard_scan_candidate_should_replace(
+    bool current_frozen,
     bool current_valid,
     bool current_keyboard_like,
     int8_t current_rssi,
@@ -56,6 +57,9 @@ bool solar_os_ble_keyboard_scan_candidate_should_replace(
     bool next_keyboard_like,
     int8_t next_rssi)
 {
+    if (current_frozen) {
+        return false;
+    }
     if (!next_has_hid_service && !next_keyboard_like) {
         return false;
     }

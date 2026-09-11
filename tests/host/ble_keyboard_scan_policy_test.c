@@ -31,17 +31,19 @@ int main(void)
     assert(!solar_os_ble_keyboard_scan_reconnect_event_is_connectable(0xffU));
 
     assert(!solar_os_ble_keyboard_scan_candidate_should_replace(
-        false, false, 0, false, false, -20));
+        false, false, false, 0, false, false, -20));
     assert(solar_os_ble_keyboard_scan_candidate_should_replace(
-        false, false, 0, true, false, -80));
+        false, false, false, 0, true, false, -80));
     assert(solar_os_ble_keyboard_scan_candidate_should_replace(
-        true, false, -20, false, true, -90));
+        false, true, false, -20, false, true, -90));
     assert(!solar_os_ble_keyboard_scan_candidate_should_replace(
-        true, true, -90, true, false, -10));
+        false, true, true, -90, true, false, -10));
     assert(solar_os_ble_keyboard_scan_candidate_should_replace(
-        true, true, -70, true, true, -60));
+        false, true, true, -70, true, true, -60));
     assert(!solar_os_ble_keyboard_scan_candidate_should_replace(
-        true, true, -60, true, true, -60));
+        false, true, true, -60, true, true, -60));
+    assert(!solar_os_ble_keyboard_scan_candidate_should_replace(
+        true, true, true, -90, true, true, -20));
 
     puts("BLE keyboard scan policy tests: ok");
     return 0;

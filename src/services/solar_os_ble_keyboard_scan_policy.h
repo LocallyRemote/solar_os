@@ -10,6 +10,7 @@ bool solar_os_ble_keyboard_scan_reconnect_bda_matches(
 bool solar_os_ble_keyboard_scan_reconnect_event_is_connectable(
     uint8_t ble_evt_type);
 bool solar_os_ble_keyboard_scan_candidate_should_replace(
+    bool current_frozen,
     bool current_valid,
     bool current_keyboard_like,
     int8_t current_rssi,
