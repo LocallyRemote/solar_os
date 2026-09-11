@@ -16,10 +16,10 @@ class BleSleepDeferTest(unittest.TestCase):
             encoding="utf-8"
         )
         start = source.index(
-            "esp_err_t solar_os_ble_keyboard_prepare_sleep(uint32_t timeout_ms)\n{"
+            "esp_err_t solar_os_ble_backend_prepare_sleep(uint32_t timeout_ms)\n{"
         )
         end = source.index(
-            "\nbool solar_os_ble_keyboard_sleep_prepare_ready(void)", start
+            "\nbool solar_os_ble_backend_sleep_prepare_ready(void)", start
         )
         prepare = source[start:end]
 

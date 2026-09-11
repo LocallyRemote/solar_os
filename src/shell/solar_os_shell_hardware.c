@@ -18,6 +18,7 @@
 #include "solar_os_audio.h"
 #include "solar_os_battery.h"
 #include "solar_os_ble_keyboard.h"
+#include "solar_os_ble.h"
 #include "solar_os_board_caps.h"
 #include "solar_os_buses.h"
 #include "solar_os_config.h"

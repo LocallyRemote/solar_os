@@ -1,4 +1,6 @@
 #include "solar_os_ble_keyboard.h"
+#include "solar_os_ble_backend.h"
+#include "solar_os_ble_bluedroid.h"
 
 #include <inttypes.h>
 #include <stdbool.h>
@@ -50,10 +52,6 @@
 #define BLE_KEYBOARD_NVS_LEGACY_PEER_KEY "peer"
 #define BLE_KEYBOARD_NVS_LAYOUT_KEY "layout"
 #define BLE_KEYBOARD_NVS_ENABLED_KEY "enabled"
-#define BLE_GATT_APP_ID 1U
-#define BLE_GATT_CONNECT_TIMEOUT_MS 12000U
-#define BLE_GATT_OPERATION_TIMEOUT_MS 5000U
-#define BLE_GATT_INVALID_CONN_ID UINT16_MAX
 
 typedef enum {
     BLE_KEYBOARD_IDLE,
@@ -88,39 +86,12 @@ typedef struct {
     char name[BLE_KEYBOARD_NAME_MAX];
 } ble_keyboard_peer_t;
 
-typedef enum {
-    BLE_GATT_OP_NONE,
-    BLE_GATT_OP_CONNECT,
-    BLE_GATT_OP_READ,
-    BLE_GATT_OP_WRITE,
-} ble_gatt_operation_t;
-
-typedef struct {
-    bool connected;
-    bool registered;
-    bool connecting;
-    esp_gatt_if_t gattc_if;
-    uint16_t conn_id;
-    uint16_t mtu;
-    esp_bd_addr_t bda;
-    esp_ble_addr_type_t addr_type;
-    solar_os_ble_gatt_service_t services[SOLAR_OS_BLE_GATT_MAX_SERVICES];
-    size_t service_count;
-    ble_gatt_operation_t op;
-    esp_gatt_status_t op_status;
-    uint8_t op_value[SOLAR_OS_BLE_GATT_VALUE_MAX];
-    size_t op_value_len;
-    char status[80];
-} ble_gatt_state_t;
-
 static const char *TAG = "ble_keyboard";
 
 static SemaphoreHandle_t scan_done_sem;
 static SemaphoreHandle_t scan_stop_done_sem;
 static SemaphoreHandle_t close_done_sem;
 static SemaphoreHandle_t status_mutex;
-static SemaphoreHandle_t gatt_mutex;
-static SemaphoreHandle_t gatt_op_sem;
 static TaskHandle_t scan_task_handle;
 static TaskHandle_t reconnect_task_handle;
 static portMUX_TYPE key_state_lock = portMUX_INITIALIZER_UNLOCKED;
@@ -166,11 +137,6 @@ static solar_os_ble_keyboard_scan_result_t *active_scan_results;
 static size_t active_scan_max_results;
 static size_t active_scan_result_count;
 static ble_keyboard_peer_t remembered_peers[BLE_KEYBOARD_MAX_REMEMBERED];
-static ble_gatt_state_t gatt_state = {
-    .gattc_if = ESP_GATT_IF_NONE,
-    .conn_id = BLE_GATT_INVALID_CONN_ID,
-    .status = "idle",
-};
 static esp_gatt_if_t hid_gattc_if = ESP_GATT_IF_NONE;
 static esp_bd_addr_t pending_bda;
 static esp_ble_addr_type_t pending_addr_type;
@@ -589,47 +555,6 @@ static void stop_scan_task_for_sleep(uint32_t timeout_ms)
     }
 }
 
-static void gatt_lock(void)
-{
-    if (gatt_mutex != NULL) {
-        xSemaphoreTake(gatt_mutex, portMAX_DELAY);
-    }
-}
-
-static void gatt_unlock(void)
-{
-    if (gatt_mutex != NULL) {
-        xSemaphoreGive(gatt_mutex);
-    }
-}
-
-static void gatt_set_status_locked(const char *fmt, ...)
-{
-    va_list args;
-
-    va_start(args, fmt);
-    vsnprintf(gatt_state.status, sizeof(gatt_state.status), fmt, args);
-    va_end(args);
-}
-
-static void reset_gatt_runtime_state(const char *status)
-{
-    gatt_lock();
-    gatt_state.connected = false;
-    gatt_state.registered = false;
-    gatt_state.connecting = false;
-    gatt_state.gattc_if = ESP_GATT_IF_NONE;
-    gatt_state.conn_id = BLE_GATT_INVALID_CONN_ID;
-    gatt_state.mtu = 0;
-    gatt_state.service_count = 0;
-    gatt_state.op = BLE_GATT_OP_NONE;
-    gatt_state.op_status = ESP_GATT_OK;
-    gatt_state.op_value_len = 0;
-    memset(gatt_state.bda, 0, sizeof(gatt_state.bda));
-    gatt_set_status_locked("%s", status != NULL ? status : "idle");
-    gatt_unlock();
-}
-
 static esp_err_t ensure_runtime_objects(void)
 {
     if (scan_done_sem == NULL) {
@@ -644,137 +569,16 @@ static esp_err_t ensure_runtime_objects(void)
     if (status_mutex == NULL) {
         status_mutex = xSemaphoreCreateMutex();
     }
-    if (gatt_mutex == NULL) {
-        gatt_mutex = xSemaphoreCreateMutex();
-    }
-    if (gatt_op_sem == NULL) {
-        gatt_op_sem = xSemaphoreCreateBinary();
-    }
+    const esp_err_t gatt_ret = solar_os_ble_service_prepare_runtime();
     if (status_mutex == NULL ||
         scan_done_sem == NULL ||
         scan_stop_done_sem == NULL ||
-        close_done_sem == NULL ||
-        gatt_mutex == NULL ||
-        gatt_op_sem == NULL) {
+        close_done_sem == NULL || gatt_ret != ESP_OK) {
         set_status(BLE_KEYBOARD_FAILED, "ble no memory");
         return ESP_ERR_NO_MEM;
     }
 
     return ESP_OK;
-}
-
-static void gatt_clear_services_locked(void)
-{
-    memset(gatt_state.services, 0, sizeof(gatt_state.services));
-    gatt_state.service_count = 0;
-}
-
-static void gatt_uuid_to_string(const esp_bt_uuid_t *uuid, char *buffer, size_t buffer_len)
-{
-    if (buffer == NULL || buffer_len == 0) {
-        return;
-    }
-    if (uuid == NULL) {
-        strlcpy(buffer, "-", buffer_len);
-        return;
-    }
-
-    switch (uuid->len) {
-    case ESP_UUID_LEN_16:
-        snprintf(buffer, buffer_len, "0x%04x", (unsigned)uuid->uuid.uuid16);
-        break;
-    case ESP_UUID_LEN_32:
-        snprintf(buffer, buffer_len, "0x%08" PRIx32, uuid->uuid.uuid32);
-        break;
-    case ESP_UUID_LEN_128:
-        snprintf(buffer,
-                 buffer_len,
-                 "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                 uuid->uuid.uuid128[15],
-                 uuid->uuid.uuid128[14],
-                 uuid->uuid.uuid128[13],
-                 uuid->uuid.uuid128[12],
-                 uuid->uuid.uuid128[11],
-                 uuid->uuid.uuid128[10],
-                 uuid->uuid.uuid128[9],
-                 uuid->uuid.uuid128[8],
-                 uuid->uuid.uuid128[7],
-                 uuid->uuid.uuid128[6],
-                 uuid->uuid.uuid128[5],
-                 uuid->uuid.uuid128[4],
-                 uuid->uuid.uuid128[3],
-                 uuid->uuid.uuid128[2],
-                 uuid->uuid.uuid128[1],
-                 uuid->uuid.uuid128[0]);
-        break;
-    default:
-        snprintf(buffer, buffer_len, "uuid-len-%u", (unsigned)uuid->len);
-        break;
-    }
-}
-
-static void gatt_drain_op_sem(void)
-{
-    if (gatt_op_sem == NULL) {
-        return;
-    }
-    while (xSemaphoreTake(gatt_op_sem, 0) == pdTRUE) {
-    }
-}
-
-static void gatt_complete_operation(ble_gatt_operation_t op, esp_gatt_status_t status)
-{
-    bool should_signal = false;
-
-    gatt_lock();
-    if (gatt_state.op == op || op == BLE_GATT_OP_NONE) {
-        gatt_state.op_status = status;
-        gatt_state.op = BLE_GATT_OP_NONE;
-        should_signal = true;
-    }
-    gatt_unlock();
-
-    if (should_signal && gatt_op_sem != NULL) {
-        xSemaphoreGive(gatt_op_sem);
-    }
-}
-
-static esp_err_t gatt_begin_operation(ble_gatt_operation_t op)
-{
-    gatt_lock();
-    if (gatt_state.op != BLE_GATT_OP_NONE) {
-        gatt_unlock();
-        return ESP_ERR_INVALID_STATE;
-    }
-    gatt_state.op = op;
-    gatt_state.op_status = ESP_GATT_OK;
-    gatt_state.op_value_len = 0;
-    gatt_unlock();
-    gatt_drain_op_sem();
-    return ESP_OK;
-}
-
-static esp_err_t gatt_wait_operation(ble_gatt_operation_t op, uint32_t timeout_ms)
-{
-    if (gatt_op_sem == NULL) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    if (xSemaphoreTake(gatt_op_sem, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
-        gatt_lock();
-        if (gatt_state.op == op) {
-            gatt_state.op = BLE_GATT_OP_NONE;
-            gatt_set_status_locked("timeout");
-        }
-        gatt_unlock();
-        return ESP_ERR_TIMEOUT;
-    }
-
-    esp_gatt_status_t status = ESP_GATT_OK;
-    gatt_lock();
-    status = gatt_state.op_status;
-    gatt_unlock();
-    return status == ESP_GATT_OK ? ESP_OK : ESP_FAIL;
 }
 
 static bool remembered_peer_valid_at(size_t index)
@@ -1925,187 +1729,6 @@ static bool gatt_event_is_for_hid(esp_gattc_cb_event_t event,
         (gattc_if == hid_gattc_if || gattc_if == ESP_GATT_IF_NONE);
 }
 
-static bool gatt_event_is_for_solaros(esp_gattc_cb_event_t event,
-                                      esp_gatt_if_t gattc_if,
-                                      const esp_ble_gattc_cb_param_t *param)
-{
-    if (event == ESP_GATTC_REG_EVT) {
-        return param != NULL && param->reg.app_id == BLE_GATT_APP_ID;
-    }
-    return gatt_state.gattc_if != ESP_GATT_IF_NONE &&
-        gattc_if == gatt_state.gattc_if;
-}
-
-static void gatt_handle_disconnect(uint16_t conn_id, const uint8_t *bda, uint8_t reason)
-{
-    bool active = false;
-
-    gatt_lock();
-    active = gatt_state.connected &&
-        (gatt_state.conn_id == conn_id ||
-         (bda != NULL && memcmp(gatt_state.bda, bda, sizeof(gatt_state.bda)) == 0));
-    if (active) {
-        gatt_state.connected = false;
-        gatt_state.connecting = false;
-        gatt_state.conn_id = BLE_GATT_INVALID_CONN_ID;
-        gatt_state.mtu = 0;
-        gatt_clear_services_locked();
-        gatt_set_status_locked("disconnected 0x%02x", reason);
-    }
-    gatt_unlock();
-
-    if (active) {
-        gatt_complete_operation(BLE_GATT_OP_NONE, ESP_GATT_ERROR);
-    }
-}
-
-static void solaros_gattc_event_handler(esp_gattc_cb_event_t event,
-                                        esp_gatt_if_t gattc_if,
-                                        esp_ble_gattc_cb_param_t *param)
-{
-    if (param == NULL) {
-        return;
-    }
-
-    switch (event) {
-    case ESP_GATTC_REG_EVT:
-        gatt_lock();
-        if (param->reg.status == ESP_GATT_OK) {
-            gatt_state.gattc_if = gattc_if;
-            gatt_state.registered = true;
-            gatt_set_status_locked("idle");
-        } else {
-            gatt_state.gattc_if = ESP_GATT_IF_NONE;
-            gatt_state.registered = false;
-            gatt_set_status_locked("register failed 0x%02x", param->reg.status);
-        }
-        gatt_unlock();
-        if (gatt_op_sem != NULL) {
-            xSemaphoreGive(gatt_op_sem);
-        }
-        break;
-
-    case ESP_GATTC_OPEN_EVT:
-        gatt_lock();
-        if (param->open.status != ESP_GATT_OK) {
-            gatt_state.connecting = false;
-            gatt_state.connected = false;
-            gatt_state.conn_id = BLE_GATT_INVALID_CONN_ID;
-            gatt_set_status_locked("open failed 0x%02x", param->open.status);
-            gatt_unlock();
-            gatt_complete_operation(BLE_GATT_OP_CONNECT, param->open.status);
-            break;
-        }
-
-        gatt_state.connected = true;
-        gatt_state.connecting = false;
-        gatt_state.conn_id = param->open.conn_id;
-        gatt_state.mtu = param->open.mtu;
-        memcpy(gatt_state.bda, param->open.remote_bda, sizeof(gatt_state.bda));
-        gatt_clear_services_locked();
-        gatt_set_status_locked("discovering");
-        gatt_unlock();
-
-        (void)esp_ble_gattc_send_mtu_req(gattc_if, param->open.conn_id);
-        if (esp_ble_gattc_search_service(gattc_if, param->open.conn_id, NULL) != ESP_OK) {
-            gatt_lock();
-            gatt_set_status_locked("service discovery failed");
-            gatt_unlock();
-            gatt_complete_operation(BLE_GATT_OP_CONNECT, ESP_GATT_ERROR);
-        }
-        break;
-
-    case ESP_GATTC_CFG_MTU_EVT:
-        gatt_lock();
-        if (gatt_state.connected && gatt_state.conn_id == param->cfg_mtu.conn_id &&
-            param->cfg_mtu.status == ESP_GATT_OK) {
-            gatt_state.mtu = param->cfg_mtu.mtu;
-        }
-        gatt_unlock();
-        break;
-
-    case ESP_GATTC_SEARCH_RES_EVT:
-        gatt_lock();
-        if (gatt_state.connected &&
-            gatt_state.conn_id == param->search_res.conn_id &&
-            gatt_state.service_count < SOLAR_OS_BLE_GATT_MAX_SERVICES) {
-            solar_os_ble_gatt_service_t *service =
-                &gatt_state.services[gatt_state.service_count++];
-            service->start_handle = param->search_res.start_handle;
-            service->end_handle = param->search_res.end_handle;
-            service->primary = param->search_res.is_primary;
-            gatt_uuid_to_string(&param->search_res.srvc_id.uuid,
-                                service->uuid,
-                                sizeof(service->uuid));
-        }
-        gatt_unlock();
-        break;
-
-    case ESP_GATTC_SEARCH_CMPL_EVT:
-        gatt_lock();
-        if (gatt_state.connected && gatt_state.conn_id == param->search_cmpl.conn_id) {
-            if (param->search_cmpl.status == ESP_GATT_OK) {
-                gatt_set_status_locked("connected");
-            } else {
-                gatt_set_status_locked("search failed 0x%02x", param->search_cmpl.status);
-            }
-        }
-        gatt_unlock();
-        gatt_complete_operation(BLE_GATT_OP_CONNECT, param->search_cmpl.status);
-        break;
-
-    case ESP_GATTC_READ_CHAR_EVT:
-        gatt_lock();
-        if (gatt_state.connected && gatt_state.conn_id == param->read.conn_id &&
-            gatt_state.op == BLE_GATT_OP_READ) {
-            gatt_state.op_status = param->read.status;
-            gatt_state.op_value_len = 0;
-            if (param->read.status == ESP_GATT_OK && param->read.value != NULL) {
-                const size_t copy_len =
-                    param->read.value_len < SOLAR_OS_BLE_GATT_VALUE_MAX ?
-                    param->read.value_len :
-                    SOLAR_OS_BLE_GATT_VALUE_MAX;
-                memcpy(gatt_state.op_value, param->read.value, copy_len);
-                gatt_state.op_value_len = copy_len;
-                gatt_set_status_locked("read handle 0x%04x", param->read.handle);
-            } else {
-                gatt_set_status_locked("read failed 0x%02x", param->read.status);
-            }
-        }
-        gatt_unlock();
-        gatt_complete_operation(BLE_GATT_OP_READ, param->read.status);
-        break;
-
-    case ESP_GATTC_WRITE_CHAR_EVT:
-        gatt_lock();
-        if (gatt_state.connected && gatt_state.conn_id == param->write.conn_id &&
-            gatt_state.op == BLE_GATT_OP_WRITE) {
-            gatt_state.op_status = param->write.status;
-            if (param->write.status == ESP_GATT_OK) {
-                gatt_set_status_locked("wrote handle 0x%04x", param->write.handle);
-            } else {
-                gatt_set_status_locked("write failed 0x%02x", param->write.status);
-            }
-        }
-        gatt_unlock();
-        gatt_complete_operation(BLE_GATT_OP_WRITE, param->write.status);
-        break;
-
-    case ESP_GATTC_CLOSE_EVT:
-        gatt_handle_disconnect(param->close.conn_id, param->close.remote_bda, (uint8_t)param->close.reason);
-        break;
-
-    case ESP_GATTC_DISCONNECT_EVT:
-        gatt_handle_disconnect(param->disconnect.conn_id,
-                               param->disconnect.remote_bda,
-                               (uint8_t)param->disconnect.reason);
-        break;
-
-    default:
-        break;
-    }
-}
-
 static void ble_gattc_callback(esp_gattc_cb_event_t event,
                                esp_gatt_if_t gattc_if,
                                esp_ble_gattc_cb_param_t *param)
@@ -2117,9 +1740,7 @@ static void ble_gattc_callback(esp_gattc_cb_event_t event,
         esp_hidh_gattc_event_handler(event, gattc_if, param);
     }
 
-    if (gatt_event_is_for_solaros(event, gattc_if, param)) {
-        solaros_gattc_event_handler(event, gattc_if, param);
-    }
+    solar_os_ble_bluedroid_gatt_event(event, gattc_if, param);
 }
 
 static void hidh_callback(void *handler_args, esp_event_base_t base, int32_t id, void *event_data)
@@ -2326,7 +1947,7 @@ static esp_err_t init_security(void)
     return ESP_OK;
 }
 
-esp_err_t solar_os_ble_keyboard_init(void)
+esp_err_t solar_os_ble_backend_init(void)
 {
     if (initialized) {
         return ESP_OK;
@@ -2416,17 +2037,7 @@ esp_err_t solar_os_ble_keyboard_init(void)
         hidh_initialized = true;
     }
 
-    gatt_drain_op_sem();
-    reset_gatt_runtime_state("idle");
-    ESP_RETURN_ON_ERROR(esp_ble_gattc_app_register(BLE_GATT_APP_ID),
-                        TAG,
-                        "generic gatt app register failed");
-    if (xSemaphoreTake(gatt_op_sem, pdMS_TO_TICKS(BLE_GATT_OPERATION_TIMEOUT_MS)) != pdTRUE) {
-        return ESP_ERR_TIMEOUT;
-    }
-    if (!gatt_state.registered) {
-        return ESP_FAIL;
-    }
+    ESP_RETURN_ON_ERROR(solar_os_ble_service_register(), TAG, "generic gatt register failed");
 
     initialized = true;
     set_status(BLE_KEYBOARD_IDLE, "idle");
@@ -2437,7 +2048,7 @@ esp_err_t solar_os_ble_keyboard_init(void)
     return ESP_OK;
 }
 
-esp_err_t solar_os_ble_keyboard_scan(solar_os_ble_keyboard_scan_result_t *results,
+esp_err_t solar_os_ble_backend_scan(solar_os_ble_keyboard_scan_result_t *results,
                                      size_t max_results,
                                      size_t *found)
 {
@@ -2481,310 +2092,6 @@ esp_err_t solar_os_ble_keyboard_scan(solar_os_ble_keyboard_scan_result_t *result
         restore_status_after_scan(BLE_KEYBOARD_SCAN_DISCOVERY);
     }
     return ret;
-}
-
-esp_err_t solar_os_ble_gatt_connect(const uint8_t bda[6], uint8_t addr_type, uint32_t timeout_ms)
-{
-    if (bda == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-    esp_err_t ret = solar_os_ble_keyboard_init();
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    esp_gatt_if_t gattc_if = ESP_GATT_IF_NONE;
-    gatt_lock();
-    if (!gatt_state.registered || gatt_state.gattc_if == ESP_GATT_IF_NONE) {
-        gatt_unlock();
-        return ESP_ERR_INVALID_STATE;
-    }
-    if (gatt_state.connected || gatt_state.connecting) {
-        gatt_unlock();
-        return ESP_ERR_INVALID_STATE;
-    }
-    gattc_if = gatt_state.gattc_if;
-    gatt_unlock();
-
-    ret = gatt_begin_operation(BLE_GATT_OP_CONNECT);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    esp_ble_gatt_creat_conn_params_t params = {0};
-    memcpy(params.remote_bda, bda, ESP_BD_ADDR_LEN);
-    params.remote_addr_type = (esp_ble_addr_type_t)addr_type;
-    params.own_addr_type = BLE_ADDR_TYPE_PUBLIC;
-    params.is_direct = true;
-    params.is_aux = false;
-    params.phy_mask = 0x0;
-
-    gatt_lock();
-    gatt_state.connecting = true;
-    gatt_state.connected = false;
-    gatt_state.conn_id = BLE_GATT_INVALID_CONN_ID;
-    gatt_state.addr_type = (esp_ble_addr_type_t)addr_type;
-    memcpy(gatt_state.bda, bda, sizeof(gatt_state.bda));
-    gatt_clear_services_locked();
-    gatt_set_status_locked("connecting");
-    gatt_unlock();
-
-    ret = esp_ble_gattc_enh_open(gattc_if, &params);
-    if (ret != ESP_OK) {
-        gatt_lock();
-        gatt_state.connecting = false;
-        gatt_set_status_locked("connect failed %s", esp_err_to_name(ret));
-        gatt_unlock();
-        gatt_complete_operation(BLE_GATT_OP_CONNECT, ESP_GATT_ERROR);
-        return ret;
-    }
-
-    return gatt_wait_operation(BLE_GATT_OP_CONNECT,
-                               timeout_ms != 0 ? timeout_ms : BLE_GATT_CONNECT_TIMEOUT_MS);
-}
-
-esp_err_t solar_os_ble_gatt_disconnect(void)
-{
-    esp_err_t ret = solar_os_ble_keyboard_init();
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    uint16_t conn_id = BLE_GATT_INVALID_CONN_ID;
-    esp_gatt_if_t gattc_if = ESP_GATT_IF_NONE;
-
-    gatt_lock();
-    if (!gatt_state.connected) {
-        gatt_state.connecting = false;
-        gatt_set_status_locked("idle");
-        gatt_unlock();
-        return ESP_OK;
-    }
-    conn_id = gatt_state.conn_id;
-    gattc_if = gatt_state.gattc_if;
-    gatt_unlock();
-
-    ret = esp_ble_gattc_close(gattc_if, conn_id);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    gatt_lock();
-    gatt_state.connected = false;
-    gatt_state.connecting = false;
-    gatt_state.conn_id = BLE_GATT_INVALID_CONN_ID;
-    gatt_state.mtu = 0;
-    gatt_clear_services_locked();
-    gatt_set_status_locked("disconnected");
-    gatt_unlock();
-    return ESP_OK;
-}
-
-void solar_os_ble_gatt_get_status(solar_os_ble_gatt_status_t *status)
-{
-    if (status == NULL) {
-        return;
-    }
-
-    gatt_lock();
-    *status = (solar_os_ble_gatt_status_t){
-        .connected = gatt_state.connected,
-        .addr_type = (uint8_t)gatt_state.addr_type,
-        .conn_id = gatt_state.conn_id,
-        .mtu = gatt_state.mtu,
-        .service_count = gatt_state.service_count,
-    };
-    memcpy(status->bda, gatt_state.bda, sizeof(status->bda));
-    strlcpy(status->status, gatt_state.status, sizeof(status->status));
-    gatt_unlock();
-}
-
-esp_err_t solar_os_ble_gatt_services(solar_os_ble_gatt_service_t *services,
-                                     size_t max_services,
-                                     size_t *count)
-{
-    if (count != NULL) {
-        *count = 0;
-    }
-    if (max_services > 0 && services == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    gatt_lock();
-    if (!gatt_state.connected) {
-        gatt_unlock();
-        return ESP_ERR_INVALID_STATE;
-    }
-    const size_t copy_count =
-        gatt_state.service_count < max_services ? gatt_state.service_count : max_services;
-    if (copy_count > 0) {
-        memcpy(services, gatt_state.services, copy_count * sizeof(services[0]));
-    }
-    if (count != NULL) {
-        *count = gatt_state.service_count;
-    }
-    gatt_unlock();
-    return ESP_OK;
-}
-
-esp_err_t solar_os_ble_gatt_characteristics(size_t service_index,
-                                            solar_os_ble_gatt_characteristic_t *characteristics,
-                                            size_t max_characteristics,
-                                            size_t *count)
-{
-    if (count != NULL) {
-        *count = 0;
-    }
-    if (max_characteristics > 0 && characteristics == NULL) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    solar_os_ble_gatt_service_t service = {0};
-    uint16_t conn_id = BLE_GATT_INVALID_CONN_ID;
-    esp_gatt_if_t gattc_if = ESP_GATT_IF_NONE;
-
-    gatt_lock();
-    if (!gatt_state.connected) {
-        gatt_unlock();
-        return ESP_ERR_INVALID_STATE;
-    }
-    if (service_index >= gatt_state.service_count) {
-        gatt_unlock();
-        return ESP_ERR_NOT_FOUND;
-    }
-    service = gatt_state.services[service_index];
-    conn_id = gatt_state.conn_id;
-    gattc_if = gatt_state.gattc_if;
-    gatt_unlock();
-
-    esp_gattc_char_elem_t chars[SOLAR_OS_BLE_GATT_MAX_CHARACTERISTICS] = {0};
-    uint16_t char_count = max_characteristics > SOLAR_OS_BLE_GATT_MAX_CHARACTERISTICS ?
-        SOLAR_OS_BLE_GATT_MAX_CHARACTERISTICS :
-        (uint16_t)max_characteristics;
-    if (char_count == 0) {
-        return ESP_OK;
-    }
-
-    esp_gatt_status_t status = esp_ble_gattc_get_all_char(gattc_if,
-                                                          conn_id,
-                                                          service.start_handle,
-                                                          service.end_handle,
-                                                          chars,
-                                                          &char_count,
-                                                          0);
-    if (status != ESP_GATT_OK) {
-        return ESP_FAIL;
-    }
-
-    for (uint16_t i = 0; i < char_count; i++) {
-        characteristics[i].handle = chars[i].char_handle;
-        characteristics[i].properties = chars[i].properties;
-        gatt_uuid_to_string(&chars[i].uuid,
-                            characteristics[i].uuid,
-                            sizeof(characteristics[i].uuid));
-    }
-    if (count != NULL) {
-        *count = char_count;
-    }
-    return ESP_OK;
-}
-
-esp_err_t solar_os_ble_gatt_read(uint16_t handle,
-                                 uint8_t *value,
-                                 size_t max_len,
-                                 size_t *value_len,
-                                 uint32_t timeout_ms)
-{
-    if (value_len != NULL) {
-        *value_len = 0;
-    }
-    if (handle == 0 || (max_len > 0 && value == NULL)) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    gatt_lock();
-    const bool can_read = gatt_state.connected && gatt_state.gattc_if != ESP_GATT_IF_NONE;
-    const uint16_t conn_id = gatt_state.conn_id;
-    const esp_gatt_if_t gattc_if = gatt_state.gattc_if;
-    gatt_unlock();
-    if (!can_read) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    esp_err_t ret = gatt_begin_operation(BLE_GATT_OP_READ);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    ret = esp_ble_gattc_read_char(gattc_if, conn_id, handle, ESP_GATT_AUTH_REQ_NONE);
-    if (ret != ESP_OK) {
-        gatt_complete_operation(BLE_GATT_OP_READ, ESP_GATT_ERROR);
-        return ret;
-    }
-
-    ret = gatt_wait_operation(BLE_GATT_OP_READ,
-                              timeout_ms != 0 ? timeout_ms : BLE_GATT_OPERATION_TIMEOUT_MS);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    gatt_lock();
-    const size_t copy_len = gatt_state.op_value_len < max_len ? gatt_state.op_value_len : max_len;
-    if (copy_len > 0) {
-        memcpy(value, gatt_state.op_value, copy_len);
-    }
-    if (value_len != NULL) {
-        *value_len = gatt_state.op_value_len;
-    }
-    gatt_unlock();
-    return ESP_OK;
-}
-
-esp_err_t solar_os_ble_gatt_write(uint16_t handle,
-                                  const uint8_t *value,
-                                  size_t value_len,
-                                  bool with_response,
-                                  uint32_t timeout_ms)
-{
-    if (handle == 0 || value == NULL || value_len == 0 || value_len > SOLAR_OS_BLE_GATT_VALUE_MAX) {
-        return ESP_ERR_INVALID_ARG;
-    }
-
-    gatt_lock();
-    const bool can_write = gatt_state.connected && gatt_state.gattc_if != ESP_GATT_IF_NONE;
-    const uint16_t conn_id = gatt_state.conn_id;
-    const esp_gatt_if_t gattc_if = gatt_state.gattc_if;
-    gatt_unlock();
-    if (!can_write) {
-        return ESP_ERR_INVALID_STATE;
-    }
-
-    esp_err_t ret = gatt_begin_operation(BLE_GATT_OP_WRITE);
-    if (ret != ESP_OK) {
-        return ret;
-    }
-
-    uint8_t buffer[SOLAR_OS_BLE_GATT_VALUE_MAX];
-    memcpy(buffer, value, value_len);
-    ret = esp_ble_gattc_write_char(gattc_if,
-                                   conn_id,
-                                   handle,
-                                   (uint16_t)value_len,
-                                   buffer,
-                                   with_response ? ESP_GATT_WRITE_TYPE_RSP : ESP_GATT_WRITE_TYPE_NO_RSP,
-                                   ESP_GATT_AUTH_REQ_NONE);
-    if (ret != ESP_OK) {
-        gatt_complete_operation(BLE_GATT_OP_WRITE, ESP_GATT_ERROR);
-        return ret;
-    }
-
-    if (!with_response) {
-        gatt_complete_operation(BLE_GATT_OP_WRITE, ESP_GATT_OK);
-        return ESP_OK;
-    }
-
-    return gatt_wait_operation(BLE_GATT_OP_WRITE,
-                               timeout_ms != 0 ? timeout_ms : BLE_GATT_OPERATION_TIMEOUT_MS);
 }
 
 static const char *scan_mode_status(ble_keyboard_scan_mode_t mode)
@@ -3451,7 +2758,7 @@ esp_err_t solar_os_ble_keyboard_start_pairing(void)
     return start_pairing_scan_now();
 }
 
-esp_err_t solar_os_ble_keyboard_prepare_sleep(uint32_t timeout_ms)
+esp_err_t solar_os_ble_backend_prepare_sleep(uint32_t timeout_ms)
 {
     if (!initialized) {
         return ESP_OK;
@@ -3500,7 +2807,8 @@ esp_err_t solar_os_ble_keyboard_prepare_sleep(uint32_t timeout_ms)
     }
 
     clear_runtime_connection_state("sleep");
-    reset_gatt_runtime_state("sleep");
+    solar_os_ble_service_reset("sleep");
+    solar_os_ble_backend_reset();
     hid_gattc_if = ESP_GATT_IF_NONE;
 
     for (size_t i = 0; i < BLE_KEYBOARD_MAX_REMEMBERED; i++) {
@@ -3563,7 +2871,7 @@ esp_err_t solar_os_ble_keyboard_prepare_sleep(uint32_t timeout_ms)
     return result;
 }
 
-bool solar_os_ble_keyboard_sleep_prepare_ready(void)
+bool solar_os_ble_backend_sleep_prepare_ready(void)
 {
     if (!initialized) {
         return true;
@@ -3575,7 +2883,7 @@ bool solar_os_ble_keyboard_sleep_prepare_ready(void)
     return reconnect_stopped && !forget_operation_pending();
 }
 
-void solar_os_ble_keyboard_resume(void)
+void solar_os_ble_backend_resume(void)
 {
     if (!solar_os_ble_keyboard_enabled_for_current_boot()) {
         return;
@@ -3632,4 +2940,33 @@ esp_err_t solar_os_ble_keyboard_forget(void)
     }
 
     return forget_remembered_keyboard();
+}
+
+/* Existing keyboard callers share the general BLE service lifecycle. The
+ * keyboard profile and its Bluedroid HID internals stay together in this
+ * backend implementation until a different host is evaluated. */
+esp_err_t solar_os_ble_keyboard_init(void)
+{
+    return solar_os_ble_init();
+}
+
+esp_err_t solar_os_ble_keyboard_scan(solar_os_ble_keyboard_scan_result_t *results,
+                                     size_t max_results, size_t *found)
+{
+    return solar_os_ble_scan(results, max_results, found);
+}
+
+esp_err_t solar_os_ble_keyboard_prepare_sleep(uint32_t timeout_ms)
+{
+    return solar_os_ble_prepare_sleep(timeout_ms);
+}
+
+bool solar_os_ble_keyboard_sleep_prepare_ready(void)
+{
+    return solar_os_ble_sleep_prepare_ready();
+}
+
+void solar_os_ble_keyboard_resume(void)
+{
+    solar_os_ble_resume();
 }
