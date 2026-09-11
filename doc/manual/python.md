@@ -1060,7 +1060,8 @@ solaros.synth.stop()
 
 ## `solaros.ble`
 
-BLE functions expose keyboard pairing and layout controls.
+Top-level BLE functions expose keyboard pairing and layout controls. Generic
+characteristic I/O is separate, under `solaros.ble.gatt`.
 
 - `status()`: return human-readable BLE keyboard status.
 - `connected()`: return whether a keyboard is connected.
@@ -1076,6 +1077,63 @@ import solaros
 
 print(solaros.ble.status())
 print("layout", solaros.ble.layout())
+```
+
+### `solaros.ble.gatt`
+
+Available when BLE support is compiled. This synchronous client owns one session
+per Python runtime; Lua and the shell have separate owners. Only one generic
+peer can be connected system-wide, independently of the OS keyboard.
+
+- `connect(address, addr_type=0, timeout_ms=0)`: connect and discover services.
+  Use a colon-separated address such as `aa:bb:cc:dd:ee:ff`; address types are
+  `0` public, `1` random, `2` public identity, and `3` random identity. Use
+  `ble scan` in the shell to find the address and type.
+- `disconnect()`: request asynchronous disconnect of this runtime's peer.
+  Harmless before first use. It cannot disconnect the shell's or Lua's peer.
+- `status()`: return `owner`, `address`, `addr_type`, `status`, `connected`,
+  `busy`, `retiring`, `mtu`, `service_count`, and `max_value_bytes`.
+- `services()`: return dictionaries with `index`, `uuid`, `primary`,
+  `start_handle`, and `end_handle`.
+- `characteristics(service_index)`: return dictionaries with `uuid`, `handle`,
+  and the numeric Bluetooth `properties` bitmask. Pass the service's returned
+  zero-based `index`.
+- `read(handle, timeout_ms=0)`: return characteristic data as `bytes`.
+- `write(handle, data, with_response=True, timeout_ms=0)`: write binary data.
+  `data` must support the buffer protocol, for example `bytes` or `bytearray`.
+  Without response, completion confirms local submission, not peer receipt.
+
+Arguments are positional. Timeouts accept `0..60000` milliseconds; zero selects
+12 seconds for connect or 5 seconds for read/write. Errors raise `OSError`;
+cancellation reports `BLE operation cancelled`. Timeout or cancellation retires
+the connection. Reconnect can fail with `ESP_ERR_INVALID_STATE` until teardown
+finishes. Rediscover handles after every reconnect, including after sleep.
+
+The runtime closes its session on normal exit, uncaught exceptions, and stop.
+Waiting operations check script stop/deadline state every 50 ms. In the REPL,
+the session lasts until the interpreter exits; use `disconnect()` between peers.
+An explicitly caught error does not end the runtime or release its session.
+
+The current service retains at most 24 services and 64 characteristics per
+service. Reads return at most the first 128 bytes; writes accept 1..128 bytes
+and remain subject to the peer/stack's negotiated-MTU behavior. `mtu` reports
+the latest successful exchange; connect does not wait separately for that
+exchange. There is no script MTU setter, automatic write chunking, notification
+subscription, GATT server, or advertising API yet.
+
+```python
+import solaros
+
+gatt = solaros.ble.gatt
+try:
+    gatt.connect("aa:bb:cc:dd:ee:ff", 1)  # replace address and type
+    print(gatt.status())
+    for service in gatt.services():
+        print(service)
+        print(gatt.characteristics(service["index"]))
+    # Use a readable handle from discovery: print(gatt.read(handle))
+finally:
+    gatt.disconnect()
 ```
 
 ## `solaros.hid`

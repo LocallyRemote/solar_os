@@ -21,6 +21,7 @@
 #define SOLAR_OS_BLE_ERR_CANCELLED ((esp_err_t)0xB1E0)
 
 typedef uint32_t solar_os_ble_session_t;
+typedef bool (*solar_os_ble_cancel_check_t)(void *user);
 
 typedef enum {
     SOLAR_OS_BLE_ADDR_PUBLIC = 0,
@@ -91,6 +92,14 @@ typedef struct {
  * Transport reuse waits for backend retirement, even after close has returned.
  * All calls except the internal event sink run outside the Bluetooth task. */
 esp_err_t solar_os_ble_session_create(const char *owner, solar_os_ble_session_t *session);
+/* Optional cooperative cancellation, checked by the waiting caller every 50 ms.
+ * The check must return normally (no VM exceptions), must not block, and its
+ * context must outlive the operation. Change it only while the session is idle.
+ * NULL disables the check. No callback runs on the Bluetooth task. */
+esp_err_t solar_os_ble_session_set_cancel_check(solar_os_ble_session_t session,
+    solar_os_ble_cancel_check_t check, void *user);
+/* Strict colon-separated hexadecimal address, in display order. */
+bool solar_os_ble_parse_address(const char *text, size_t len, uint8_t bda[6]);
 esp_err_t solar_os_ble_session_close(solar_os_ble_session_t session);
 esp_err_t solar_os_ble_session_cancel(solar_os_ble_session_t session);
 esp_err_t solar_os_ble_session_get_info(solar_os_ble_session_t session,

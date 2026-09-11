@@ -5256,6 +5256,7 @@ static int solua_ble_read(lua_State *L)
     lua_pushlstring(L, buffer, read_len);
     return 1;
 }
+#include "solar_os_lua_ble.inc"
 #endif
 
 #if SOLAR_OS_PACKAGE_SERVICE_HID
@@ -7385,6 +7386,9 @@ esp_err_t solar_os_lua_run(const solar_os_script_run_request_t *request,
 #if SOLAR_OS_PACKAGE_SERVICE_MIDI
     solua_midi_destroy();
 #endif
+#if SOLAR_OS_PACKAGE_SERVICE_BLE
+    solua_ble_destroy();
+#endif
 #if SOLAR_OS_PACKAGE_SERVICE_NET
     solua_net_destroy();
 #endif
@@ -7477,6 +7481,9 @@ done:
 #endif
 #if SOLAR_OS_PACKAGE_SERVICE_MIDI
         solua_midi_destroy();
+#endif
+#if SOLAR_OS_PACKAGE_SERVICE_BLE
+        solua_ble_destroy();
 #endif
 #if SOLAR_OS_PACKAGE_SERVICE_NET
         solua_net_destroy();
@@ -7802,6 +7809,9 @@ static void solua_stop(solar_os_context_t *ctx)
 #endif
 #if SOLAR_OS_PACKAGE_SERVICE_MIDI
     solua_midi_destroy();
+#endif
+#if SOLAR_OS_PACKAGE_SERVICE_BLE
+    solua_ble_destroy();
 #endif
 #if SOLAR_OS_PACKAGE_SERVICE_NET
     solua_net_destroy();

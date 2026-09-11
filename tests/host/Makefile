@@ -10,13 +10,27 @@ MANUAL_GENERATED_HEADER := $(MANUAL_GENERATED_DIR)/solar_os_manual_data.h
 
 .PHONY: all test clean
 
-TARGETS += ble_service_test ble_bluedroid_test
+TARGETS += ble_service_test ble_bluedroid_test ble_lua_bindings_test
 
 all: $(TARGETS)
 
+LUA_DIR := $(ROOT)/components/lua/lua/src
+LUA_TEST_SOURCES := $(filter-out $(LUA_DIR)/lua.c $(LUA_DIR)/luac.c \
+	$(LUA_DIR)/linit.c $(LUA_DIR)/liolib.c $(LUA_DIR)/loadlib.c $(LUA_DIR)/loslib.c, \
+	$(wildcard $(LUA_DIR)/*.c))
+
+ble_lua_bindings_test: ble_lua_bindings_test.c ble_service_test.c ble_test_support.c \
+		$(WRITER_DIR)/solar_os_lua_ble.inc $(ROOT)/src/services/solar_os_ble.c \
+		$(ROOT)/src/services/solar_os_ble.h $(ROOT)/src/services/solar_os_ble_backend.h \
+		ble_stubs/freertos/semphr.h ble_stubs/freertos/task.h $(LUA_TEST_SOURCES)
+	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200809L -pthread -include compat.h \
+		-Ible_stubs -I. -I$(ROOT)/src/services -I$(WRITER_DIR) -I$(LUA_DIR) \
+		ble_lua_bindings_test.c ble_test_support.c $(ROOT)/src/services/solar_os_ble.c \
+		$(LUA_TEST_SOURCES) -lm -o $@
+
 ble_service_test: ble_service_test.c ble_test_support.c $(ROOT)/src/services/solar_os_ble.c \
 		$(ROOT)/src/services/solar_os_ble.h $(ROOT)/src/services/solar_os_ble_backend.h \
-		ble_stubs/freertos/semphr.h
+		ble_stubs/freertos/semphr.h ble_stubs/freertos/task.h
 	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200809L -pthread -include compat.h -Ible_stubs -I. -I$(ROOT)/src/services \
 		ble_service_test.c ble_test_support.c $(ROOT)/src/services/solar_os_ble.c -o $@
 
@@ -343,6 +357,7 @@ rtc_pcf85063_test: rtc_pcf85063_test.c \
 test: $(TARGETS)
 	./ble_service_test
 	./ble_bluedroid_test
+	./ble_lua_bindings_test
 	./writer_buffer_test
 	./writer_files_test
 	./sketch_canvas_test

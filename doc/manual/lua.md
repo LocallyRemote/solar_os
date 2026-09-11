@@ -79,7 +79,7 @@ service packages are not available on that board.
 - `solaros.uart`: `status`, `baud`, `is_valid_baud`, `mode`, `write`, `read` when UART support is compiled
 - `solaros.audio`: `status`, `deinit`, `off`, `set_volume`, `set_mic_gain`, `tone`, `tone_async`, `cancel`, `queue_status`, `level`, `capture`, `loopback`, `wav_info`, `record_wav`, `play_wav` when audio support is compiled. `capture(frames)` accepts 1 through 4096 frames and returns an interleaved little-endian signed-16 binary string plus a format table with `sample_format`, `sample_rate`, `channels`, and `bits_per_sample`.
 - `solaros.synth`: `status`, `configure`, `configure_oscillator2`, `configure_filter`, `configure_performance`, `note_on`, `note_off`, `all_notes_off`, `stop` when synth support is compiled. It provides eight native two-oscillator voices with polyphonic or monophonic last-note playback, portamento, per-note velocity, ADSR envelopes, and resonant low-pass filters; scripts retain the system's global speaker volume. Status includes DSP-derived `pcm_peak` and `pcm_rms` values for the captured scope block.
-- `solaros.ble`: `status`, `connected`, `pair`, `forget`, `layout`, `read` when BLE support is compiled
+- `solaros.ble`: keyboard `status`, `connected`, `pair`, `forget`, `layout`, `read`; generic client functions under `solaros.ble.gatt` when BLE support is compiled
 - `solaros.clipboard`: `set`, `get`, `size`, `clear`
 - `solaros.identity`: `user`, `hostname`, `set_user`, `set_hostname`, `format`
 - `solaros.net`: `ping`, managed `tcp_connect`, `tcp_send`, `tcp_receive`, `udp_open`, `udp_send`, `udp_receive`, `websocket_connect`, `websocket_send`, `websocket_receive`, `close`, `close_all`, and `limits` when `network.base` is compiled
@@ -94,6 +94,40 @@ service packages are not available on that board.
 - `solaros.gfx`: foreground graphics drawing functions
 
 Lua strings are binary-safe, so byte-oriented APIs such as `uart.read`, `i2c.read_reg`, `clipboard.get`, and `mqtt.read().payload` return Lua strings.
+
+### Generic BLE GATT client
+
+`solaros.ble.gatt` mirrors the [Python GATT client](python.md#solarosblegatt):
+`connect(address, addr_type, timeout_ms)`, `disconnect()`, `status()`,
+`services()`, `characteristics(service_index)`, `read(handle, timeout_ms)`, and
+`write(handle, data, with_response, timeout_ms)`. Optional trailing arguments
+may be omitted or `nil`; defaults are public address type, service-default
+timeout, and writes with response. Use dot calls, not colon method syntax.
+
+Lua data uses binary strings, including embedded zero bytes. Discovery results
+are one-based Lua arrays, but each service's `index` field is **zero-based**;
+pass that field to `characteristics()`. Status and discovery fields, service
+limits, timeouts, retirement, and reconnect rules match Python. Errors raise Lua
+errors; cancellation reports `BLE operation cancelled`.
+
+Lua owns a separate session, automatically closed on interpreter exit, errors,
+or stop. Only one generic peer is available system-wide, independently of the
+keyboard. A caught error or completion of one REPL command does not close the
+interpreter's session. Use `disconnect()` when finished with a peer.
+
+```lua
+local gatt = solaros.ble.gatt
+gatt.connect("aa:bb:cc:dd:ee:ff", 1) -- replace address and type
+for _, service in ipairs(gatt.services()) do
+    print(service.uuid, service.index)
+    for _, characteristic in ipairs(gatt.characteristics(service.index)) do
+        print(characteristic.uuid, characteristic.handle)
+    end
+end
+-- Use a discovered handle: local data = gatt.read(handle)
+-- Binary write: gatt.write(handle, string.char(0, 255), true)
+gatt.disconnect()
+```
 
 ### Generic pointer and axis input
 

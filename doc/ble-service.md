@@ -40,6 +40,14 @@ connection and wakes a waiting caller with `SOLAR_OS_BLE_ERR_CANCELLED`.
 Cancellation cannot undo a write already transmitted. Closing a session has
 the same cancellation behavior and also invalidates the handle.
 
+`solar_os_ble_session_set_cancel_check()` installs an optional cooperative
+cancellation check while the session is idle. A waiting connect/read/write
+caller runs it outside service locks at intervals of at most 50 ms (subject to
+task scheduling). The check must not block or raise interpreter exceptions.
+The context must remain valid until the operation returns. A true result uses
+the same cancellation/retirement path as explicit cancellation. Sessions without
+a check retain the normal blocking wait. Reused slots clear the old check.
+
 A connect/read/write timeout retires the connection and returns
 `ESP_ERR_TIMEOUT`. A new operation cannot reuse the connection while an old
 request might still complete. Reconnect returns `ESP_ERR_INVALID_STATE` while
@@ -101,9 +109,11 @@ whether the Bluetooth stack initializes.
   receipt.
 - Characteristic handles are valid for the connection that discovered them.
   Apps must not retain them across reconnects.
-- Python/Lua still expose keyboard input only. Their session wrappers and
-  automatic runtime cleanup, public event queues, notifications, GATT servers,
-  and advertising are separate API work.
+- Python/Lua expose synchronous client operations under `solaros.ble.gatt`,
+  with a lazily allocated runtime-owned session and automatic cleanup before VM
+  teardown. Cooperative checks use the existing stop/deadline signals. Legacy
+  `solaros.ble.read()` still reads decoded keyboard input. Public event queues,
+  notifications, GATT servers, and advertising are not exposed.
 - `service.ble` selects the service, adapter, and keyboard profile under the
   existing package and board capability gates.
 
@@ -112,9 +122,10 @@ whether the Bluetooth stack initializes.
 Build and run the host tests:
 
 ```sh
-make -C tests/host ble_service_test ble_bluedroid_test
+make -C tests/host ble_service_test ble_bluedroid_test ble_lua_bindings_test
 tests/host/ble_service_test
 tests/host/ble_bluedroid_test
+tests/host/ble_lua_bindings_test
 ```
 
 The session tests use actual pthread waits and a controlled backend to exercise
@@ -123,9 +134,16 @@ events, reused transport IDs, sleep, and compatibility calls. Adapter tests run
 the actual Bluedroid adapter with controlled IDF callbacks, covering pending
 registration/open cancellation, request correlation, enqueue failures, and the
 NULL-parameter unregister barrier. Firmware builds compile against real IDF
-headers.
+headers. Cooperative checks are tested during connect, read, and write, including
+callback reset when a slot is reused. The Lua test runs the actual interpreter
+and bindings against the session service with a controlled radio backend. It
+checks binary values, argument validation, ownership, VM cleanup, and stop during
+a blocking read. Python has descriptor/source regression checks and firmware
+build coverage; its runtime behavior also needs device validation.
 
-Hardware acceptance covers keyboard input/reconnect and sleep/wake, shell GATT
+Hardware checks should cover keyboard input/reconnect and sleep/wake, shell GATT
 connect/discover/read/write, repeated disconnect/reconnect, and recovery after
-a GATT timeout. Host tests and successful builds do not establish those radio
+a GATT timeout. Run discovery/read/write from both Python and Lua, stop a script
+during a pending operation, and confirm the shell can subsequently reconnect
+without rebooting. Host tests and successful builds do not establish those radio
 and lifecycle results or live heap use.

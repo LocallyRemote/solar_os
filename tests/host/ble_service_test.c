@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <stdatomic.h>
+#include "freertos/task.h"
 
 #include "solar_os_ble.h"
 #include "solar_os_ble_backend.h"
@@ -12,7 +14,7 @@ static pthread_cond_t fake_changed = PTHREAD_COND_INITIALIZER;
 static solar_os_ble_backend_event_t submitted;
 static unsigned submissions, cancellations;
 static uint32_t fake_epoch;
-static bool initialized, defer_connect, defer_read;
+static bool initialized, defer_connect, defer_read, defer_write;
 static bool write_response;
 static esp_err_t submit_result;
 static const uint8_t peer[6] = {1, 2, 3, 4, 5, 6};
@@ -180,13 +182,17 @@ esp_err_t solar_os_ble_backend_write(uint32_t epoch, uint32_t request, uint16_t 
         .type = SOLAR_OS_BLE_BACKEND_WRITTEN, .epoch = epoch, .request = request,
         .conn_id = 7, .handle = handle,
     };
-    solar_os_ble_service_event(&event);
+    record(event);
+    if (!defer_write) {
+        solar_os_ble_service_event(&event);
+    }
     return ESP_OK;
 }
 
 typedef struct {
     solar_os_ble_session_t id;
     bool connect;
+    bool write;
     esp_err_t result;
     uint8_t value[2];
     size_t len;
@@ -195,6 +201,11 @@ typedef struct {
 static void *run_call(void *arg)
 {
     call_t *call = arg;
+    if (call->write) {
+        const uint8_t value[] = {0, 0xff};
+        call->result = solar_os_ble_session_write(call->id, 3, value, sizeof(value), true, 2000);
+        return NULL;
+    }
     call->result = call->connect ?
         solar_os_ble_session_connect(call->id, peer, SOLAR_OS_BLE_ADDR_RANDOM, 2000) :
         solar_os_ble_session_read(call->id, 3, call->value, sizeof(call->value), &call->len, 2000);
@@ -212,8 +223,81 @@ static void assert_busy(solar_os_ble_session_t id)
     assert(solar_os_ble_session_get_info(id, &info) == ESP_OK && info.busy);
 }
 
+typedef struct {
+    solar_os_ble_session_t id;
+    atomic_bool cancelled;
+    atomic_uint checks;
+} cancel_context_t;
+
+static bool should_cancel(void *user)
+{
+    cancel_context_t *ctx = user;
+    /* Checks run on the waiting task, without the service metadata lock. */
+    solar_os_ble_session_info_t info;
+    assert(solar_os_ble_session_get_info(ctx->id, &info) == ESP_OK);
+    atomic_fetch_add(&ctx->checks, 1);
+    return atomic_load(&ctx->cancelled);
+}
+
+static void test_cooperative_cancel(void)
+{
+    for (int op = 0; op < 3; op++) {
+        cancel_context_t ctx = {0};
+        assert(solar_os_ble_session_create("script", &ctx.id) == ESP_OK);
+        assert(solar_os_ble_session_set_cancel_check(ctx.id, should_cancel, &ctx) == ESP_OK);
+        defer_connect = false;
+        if (op != 0) {
+            connect_session(ctx.id);
+        }
+        defer_connect = op == 0;
+        defer_read = op == 1;
+        defer_write = op == 2;
+        unsigned n = submission_count();
+        call_t call = {.id = ctx.id, .connect = op == 0, .write = op == 2};
+        pthread_t thread;
+        assert(pthread_create(&thread, NULL, run_call, &call) == 0);
+        solar_os_ble_backend_event_t late = await_submission(n);
+        assert(solar_os_ble_session_set_cancel_check(ctx.id, NULL, NULL) == ESP_ERR_INVALID_STATE);
+        const TickType_t start = xTaskGetTickCount();
+        while (atomic_load(&ctx.checks) == 0) {
+            const struct timespec pause = {.tv_nsec = 1000000};
+            nanosleep(&pause, NULL);
+            assert(xTaskGetTickCount() - start < 1000U);
+        }
+        atomic_store(&ctx.cancelled, true);
+        assert(pthread_join(thread, NULL) == 0);
+        assert(call.result == SOLAR_OS_BLE_ERR_CANCELLED);
+        assert(xTaskGetTickCount() - start < 1000U);
+        assert(atomic_load(&ctx.checks) > 0);
+        solar_os_ble_service_event(&late);
+        solar_os_ble_session_info_t info;
+        assert(solar_os_ble_session_get_info(ctx.id, &info) == ESP_OK && info.retiring);
+        assert(solar_os_ble_session_close(ctx.id) == ESP_OK);
+        assert(solar_os_ble_session_set_cancel_check(ctx.id, NULL, NULL) == ESP_ERR_INVALID_STATE);
+        retired();
+        /* Reusing the slot must not retain the old callback or its stack context. */
+        solar_os_ble_session_t next;
+        assert(solar_os_ble_session_create("next", &next) == ESP_OK);
+        defer_connect = false;
+        connect_session(next);
+        assert(solar_os_ble_session_close(next) == ESP_OK);
+        retired();
+    }
+    defer_connect = defer_read = defer_write = false;
+}
+
 int main(void)
 {
+    uint8_t parsed[6];
+    assert(solar_os_ble_parse_address("01:02:03:04:05:06", 17, parsed));
+    assert(memcmp(parsed, peer, 6) == 0);
+    assert(solar_os_ble_parse_address("aA:bB:cC:dD:eE:fF", 17, parsed));
+    assert(parsed[0] == 0xaa && parsed[5] == 0xff);
+    assert(!solar_os_ble_parse_address("01:02:03:04:05:06x", 18, parsed));
+    assert(!solar_os_ble_parse_address("01-02:03:04:05:06", 17, parsed));
+    assert(!solar_os_ble_parse_address("01:02:03:04:05:0g", 17, parsed));
+    assert(!solar_os_ble_parse_address("01:02:03:04:05:\0X", 17, parsed));
+    assert(!solar_os_ble_parse_address(NULL, 17, parsed));
     solar_os_ble_session_t ids[SOLAR_OS_BLE_SESSION_MAX], extra;
     assert(solar_os_ble_session_create("", &extra) == ESP_ERR_INVALID_ARG);
     for (unsigned i = 0; i < SOLAR_OS_BLE_SESSION_MAX; i++) {
@@ -345,6 +429,7 @@ int main(void)
     assert(solar_os_ble_gatt_disconnect() == ESP_OK);
     retired();
     assert(solar_os_ble_scan(&scan, 1, &found) == ESP_OK && found == 1);
+    test_cooperative_cancel();
     puts("BLE sessions: ownership, cancellation, timeout, stale events, sleep and compatibility OK");
     return 0;
 }

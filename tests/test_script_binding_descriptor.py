@@ -13,11 +13,15 @@ PYTHON_BINDINGS = PYTHON_SOURCE + (
     REPOSITORY / "src/apps/solar_os_python_dsp.inc"
 ).read_text(encoding="utf-8") + (
     REPOSITORY / "src/apps/solar_os_python_ftp.inc"
+).read_text(encoding="utf-8") + (
+    REPOSITORY / "src/apps/solar_os_python_ble.inc"
 ).read_text(encoding="utf-8")
 LUA_BINDINGS = LUA_SOURCE + (
     REPOSITORY / "src/apps/solar_os_lua_dsp.inc"
 ).read_text(encoding="utf-8") + (
     REPOSITORY / "src/apps/solar_os_lua_ftp.inc"
+).read_text(encoding="utf-8") + (
+    REPOSITORY / "src/apps/solar_os_lua_ble.inc"
 ).read_text(encoding="utf-8")
 DESCRIPTOR = (REPOSITORY / "src/apps/solar_os_script_api.inc").read_text(
     encoding="utf-8"
@@ -87,7 +91,7 @@ class ScriptBindingDescriptorTest(unittest.TestCase):
             DESCRIPTOR,
             re.MULTILINE,
         )
-        self.assertEqual(len(nested), 9)
+        self.assertEqual(len(nested), 16)
         for module, submodule, _public_name, native_name in nested:
             self.assertIn(
                 f"solaros_{module}_{submodule}_{native_name}_obj",
@@ -136,7 +140,7 @@ class ScriptBindingDescriptorTest(unittest.TestCase):
         )
         self.assertEqual(
             sum(map(len, entries.values())) + nested_count + hid_keycode_count,
-            560,
+            567,
         )
 
     def test_tui_and_gfx_export_modified_horizontal_navigation_keys(self):

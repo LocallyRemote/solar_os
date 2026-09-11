@@ -6,6 +6,7 @@
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
+#include "freertos/task.h"
 
 #define BLE_CONNECT_TIMEOUT_MS 12000U
 #define BLE_OPERATION_TIMEOUT_MS 5000U
@@ -19,6 +20,8 @@ typedef struct {
     bool closing;
     bool busy; /* Pins this slot and its result until the calling task returns. */
     bool pending;
+    solar_os_ble_cancel_check_t cancel_check;
+    void *cancel_user;
     uint32_t request;
     ble_operation_t op;
     uint16_t handle;
@@ -223,6 +226,8 @@ static esp_err_t create_locked(size_t first, size_t end, const char *owner,
             s->id = handle;
             s->closing = false;
             s->pending = false;
+            s->cancel_check = NULL;
+            s->cancel_user = NULL;
             s->op = BLE_OP_NONE;
             strlcpy(s->owner, owner, sizeof(s->owner));
             *id = handle;
@@ -246,6 +251,47 @@ esp_err_t solar_os_ble_session_create(const char *owner, solar_os_ble_session_t 
     const esp_err_t ret = create_locked(1, BLE_SLOT_COUNT, owner, session);
     unlock_state();
     return ret;
+}
+
+esp_err_t solar_os_ble_session_set_cancel_check(solar_os_ble_session_t id,
+    solar_os_ble_cancel_check_t check, void *user)
+{
+    solar_os_ble_service_prepare_runtime();
+    lock_state();
+    ble_session_t *s = live_locked(id);
+    if (s == NULL || s->busy) {
+        unlock_state();
+        return ESP_ERR_INVALID_STATE;
+    }
+    s->cancel_check = check;
+    s->cancel_user = user;
+    unlock_state();
+    return ESP_OK;
+}
+
+bool solar_os_ble_parse_address(const char *text, size_t len, uint8_t bda[6])
+{
+    if (text == NULL || bda == NULL || len != 17) {
+        return false;
+    }
+    uint8_t parsed[6] = {0};
+    for (size_t i = 0; i < 6; i++) {
+        if (i != 0 && text[i * 3 - 1] != ':') {
+            return false;
+        }
+        for (size_t j = 0; j < 2; j++) {
+            const char c = text[i * 3 + j];
+            const int digit = c >= '0' && c <= '9' ? c - '0' :
+                c >= 'a' && c <= 'f' ? c - 'a' + 10 :
+                c >= 'A' && c <= 'F' ? c - 'A' + 10 : -1;
+            if (digit < 0) {
+                return false;
+            }
+            parsed[i] = (uint8_t)((parsed[i] << 4) | digit);
+        }
+    }
+    memcpy(bda, parsed, sizeof(parsed));
+    return true;
 }
 
 static esp_err_t cancel_session(solar_os_ble_session_t id, bool close)
@@ -333,13 +379,43 @@ static esp_err_t wait_operation(solar_os_ble_session_t id, uint32_t request,
     lock_state();
     ble_session_t *s = find_locked(id); /* busy pins the slot, including after close */
     SemaphoreHandle_t wake = s->wake;
+    const solar_os_ble_cancel_check_t check = s->cancel_check;
+    void *const user = s->cancel_user;
     unlock_state();
-    if (xSemaphoreTake(wake, pdMS_TO_TICKS(timeout_ms)) != pdTRUE) {
+    const TickType_t started = xTaskGetTickCount();
+    const TickType_t timeout = pdMS_TO_TICKS(timeout_ms);
+    esp_err_t aborted = ESP_OK;
+    for (;;) {
+        if (xSemaphoreTake(wake, 0) == pdTRUE) {
+            break;
+        }
+        if (check != NULL && check(user)) {
+            aborted = SOLAR_OS_BLE_ERR_CANCELLED;
+            break;
+        }
+        const TickType_t elapsed = xTaskGetTickCount() - started;
+        if (elapsed >= timeout) {
+            aborted = ESP_ERR_TIMEOUT;
+            break;
+        }
+        TickType_t remaining = timeout - elapsed;
+        TickType_t slice = pdMS_TO_TICKS(50U);
+        if (slice == 0) {
+            slice = 1;
+        }
+        if (check != NULL && remaining > slice) {
+            remaining = slice;
+        }
+        if (xSemaphoreTake(wake, remaining) == pdTRUE) {
+            break;
+        }
+    }
+    if (aborted != ESP_OK) {
         lock_dispatch();
         lock_state();
         uint32_t epoch = 0;
         if (s->request == request && s->pending) {
-            epoch = retire_locked(id, ESP_ERR_TIMEOUT);
+            epoch = retire_locked(id, aborted);
         }
         unlock_state();
         if (epoch != 0) {

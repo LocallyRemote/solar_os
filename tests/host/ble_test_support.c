@@ -5,6 +5,13 @@
 #include <freertos/semphr.h>
 #include "esp_err.h"
 
+TickType_t xTaskGetTickCount(void)
+{
+    struct timespec now;
+    clock_gettime(CLOCK_MONOTONIC, &now);
+    return (TickType_t)((uint64_t)now.tv_sec * 1000U + now.tv_nsec / 1000000U);
+}
+
 SemaphoreHandle_t xSemaphoreCreateBinaryStatic(StaticSemaphore_t *sem)
 {
     assert(pthread_mutex_init(&sem->lock, NULL) == 0);

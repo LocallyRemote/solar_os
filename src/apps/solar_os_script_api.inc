@@ -449,6 +449,15 @@ SOLAR_OS_SCRIPT_API_FUNCTION(ble, pair, pair);
 SOLAR_OS_SCRIPT_API_FUNCTION(ble, forget, forget);
 SOLAR_OS_SCRIPT_API_FUNCTION(ble, layout, layout);
 SOLAR_OS_SCRIPT_API_FUNCTION(ble, read, read);
+SOLAR_OS_SCRIPT_API_SUBMODULE_BEGIN(ble, gatt);
+SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, connect, connect);
+SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, disconnect, disconnect);
+SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, status, status);
+SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, services, services);
+SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, characteristics, characteristics);
+SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, read, read);
+SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, write, write);
+SOLAR_OS_SCRIPT_API_SUBMODULE_END(ble, gatt);
 SOLAR_OS_SCRIPT_API_MODULE_END(ble);
 #endif
 
