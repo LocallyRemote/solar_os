@@ -203,6 +203,7 @@ typedef enum {
     PYTHON_EVENT_GFX_FILL_RECT,
     PYTHON_EVENT_GFX_CIRCLE,
     PYTHON_EVENT_GFX_FILL_CIRCLE,
+    PYTHON_EVENT_GFX_ICON,
     PYTHON_EVENT_GFX_BITMAP,
     PYTHON_EVENT_GFX_TEXT,
     PYTHON_EVENT_DONE,
@@ -772,6 +773,21 @@ static solar_os_gfx_font_t python_gfx_font_from_obj(mp_obj_t obj)
         mp_raise_ValueError(MP_ERROR_TEXT("expected gfx font"));
     }
     return (solar_os_gfx_font_t)value;
+}
+
+static solar_os_gfx_icon_size_t python_gfx_icon_size_from_obj(mp_obj_t obj)
+{
+    const mp_int_t value = mp_obj_get_int(obj);
+    switch (value) {
+    case SOLAR_OS_GFX_ICON_SIZE_8:
+    case SOLAR_OS_GFX_ICON_SIZE_16:
+    case SOLAR_OS_GFX_ICON_SIZE_32:
+    case SOLAR_OS_GFX_ICON_SIZE_48:
+    case SOLAR_OS_GFX_ICON_SIZE_64:
+        return (solar_os_gfx_icon_size_t)value;
+    default:
+        mp_raise_ValueError(MP_ERROR_TEXT("icon size must be 8, 16, 32, 48, or 64"));
+    }
 }
 
 static void python_resolve_path_obj(mp_obj_t obj, char *path, size_t path_len)
@@ -7531,6 +7547,25 @@ static mp_obj_t solaros_gfx_fill_circle(size_t n_args, const mp_obj_t *args)
 }
 MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(solaros_gfx_fill_circle_obj, 3, 3, solaros_gfx_fill_circle);
 
+static mp_obj_t solaros_gfx_icon(size_t n_args, const mp_obj_t *args)
+{
+    (void)n_args;
+    solar_os_gfx_icon_t icon;
+    if (solar_os_gfx_icon_from_name(mp_obj_str_get_str(args[2]), &icon) != ESP_OK) {
+        mp_raise_ValueError(MP_ERROR_TEXT("unknown icon name"));
+    }
+    const python_event_t event = {
+        .type = PYTHON_EVENT_GFX_ICON,
+        .x0 = python_i32_from_obj(args[0]),
+        .y0 = python_i32_from_obj(args[1]),
+        .width = (uint16_t)python_gfx_icon_size_from_obj(args[3]),
+        .attr = (uint32_t)icon,
+    };
+    python_gfx_send_event(&event);
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(solaros_gfx_icon_obj, 4, 4, solaros_gfx_icon);
+
 static mp_obj_t solaros_gfx_bitmap(size_t n_args, const mp_obj_t *args)
 {
     (void)n_args;
@@ -8722,6 +8757,13 @@ static void python_apply_gfx_event(solar_os_context_t *ctx, const python_event_t
     case PYTHON_EVENT_GFX_FILL_CIRCLE:
         solar_os_gfx_fill_circle(gfx, (int)event->x0, (int)event->y0, (int)event->width);
         break;
+    case PYTHON_EVENT_GFX_ICON:
+        solar_os_gfx_icon(gfx,
+                          (int)event->x0,
+                          (int)event->y0,
+                          (solar_os_gfx_icon_t)event->attr,
+                          (solar_os_gfx_icon_size_t)event->width);
+        break;
     case PYTHON_EVENT_GFX_BITMAP:
         solar_os_gfx_bitmap(gfx,
                             (int)event->x0,
@@ -8808,6 +8850,7 @@ static void python_drain_events(solar_os_context_t *ctx)
         case PYTHON_EVENT_GFX_FILL_RECT:
         case PYTHON_EVENT_GFX_CIRCLE:
         case PYTHON_EVENT_GFX_FILL_CIRCLE:
+        case PYTHON_EVENT_GFX_ICON:
         case PYTHON_EVENT_GFX_BITMAP:
         case PYTHON_EVENT_GFX_TEXT:
             python_apply_gfx_event(ctx, &event);

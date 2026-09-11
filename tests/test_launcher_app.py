@@ -29,10 +29,15 @@ class LauncherAppTest(unittest.TestCase):
 
     def test_default_config_includes_writer(self):
         self.assertIn(
-            '\\"name\\": \\"Writer\\", \\"icon\\": 163, '
+            '\\"name\\": \\"Writer\\", \\"icon\\": \\"pencil\\", '
             '\\"command\\": \\"writer\\", \\"column\\": 2, \\"row\\": 1',
             LAUNCHER,
         )
+
+    def test_icon_names_and_legacy_numbers_are_accepted(self):
+        self.assertIn("solar_os_gfx_icon_from_name(name, icon)", LAUNCHER)
+        self.assertIn("solar_os_json_is_string(value)", LAUNCHER)
+        self.assertIn("solar_os_json_is_number(value)", LAUNCHER)
 
     def test_embedded_default_is_valid_json(self):
         start = LAUNCHER.index("static const char launcher_default_config[]")

@@ -2,6 +2,10 @@
 
 ## 4.x
 
+- **4.10.23** — 2026-09-11 — Added the configurable native graphical
+  launcher. Launcher configurations now use readable Open Iconic names while
+  retaining legacy numeric IDs, and Python/Lua graphics scripts can draw the
+  same named icons at supported sizes.
 - **4.10.22** — 2026-09-08 — The Wi-Fi TUI now presents a scanning popup,
   selectable networks, visible password entry, and management views for
   forgetting saved stations and adding, editing, or removing saved access

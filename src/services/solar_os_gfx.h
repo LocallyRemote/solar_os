@@ -94,6 +94,9 @@ void solar_os_gfx_fill_polygon(solar_os_gfx_t *gfx,
 void solar_os_gfx_circle(solar_os_gfx_t *gfx, int x, int y, int radius);
 void solar_os_gfx_fill_circle(solar_os_gfx_t *gfx, int x, int y, int radius);
 void solar_os_gfx_text(solar_os_gfx_t *gfx, int x, int baseline_y, const char *text);
+/* Resolve a canonical Open Iconic name such as "tablet" or "musical-note". */
+esp_err_t solar_os_gfx_icon_from_name(const char *name,
+                                      solar_os_gfx_icon_t *icon);
 /* Draw a transparent icon in the current color. x and y are its top-left. */
 void solar_os_gfx_icon(solar_os_gfx_t *gfx,
                        int x,

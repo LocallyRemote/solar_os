@@ -726,6 +726,7 @@ SOLAR_OS_SCRIPT_API_FUNCTION(gfx, rect, rect);
 SOLAR_OS_SCRIPT_API_FUNCTION(gfx, fill_rect, fill_rect);
 SOLAR_OS_SCRIPT_API_FUNCTION(gfx, circle, circle);
 SOLAR_OS_SCRIPT_API_FUNCTION(gfx, fill_circle, fill_circle);
+SOLAR_OS_SCRIPT_API_FUNCTION(gfx, icon, icon);
 SOLAR_OS_SCRIPT_API_FUNCTION(gfx, bitmap, bitmap);
 SOLAR_OS_SCRIPT_API_FUNCTION(gfx, sprite, bitmap);
 SOLAR_OS_SCRIPT_API_FUNCTION(gfx, text, text);

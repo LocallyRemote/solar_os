@@ -690,26 +690,26 @@ configuration. Launcher reloads the file whenever a child application returns,
 so editing the configuration through a launcher item takes effect immediately.
 
 The file is JSON. `layout.columns` and `layout.rows` define a grid from 1 by 1
-through 8 by 8. Each item has a displayed `name`, a numeric Open Iconic `icon`
-ID, a SolarOS shell `command`, and a zero-based `column` and `row`. A cell can
+through 8 by 8. Each item has a displayed `name`, an Open Iconic `icon`
+name, a SolarOS shell `command`, and a zero-based `column` and `row`. A cell can
 contain at most one item, and a configuration can contain up to 32 items:
 
 ```json
 {
   "layout": {"columns": 3, "rows": 2},
   "items": [
-    {"name": "Files", "icon": 107, "command": "files", "column": 0, "row": 0},
-    {"name": "Manual", "icon": 33, "command": "help", "column": 1, "row": 0},
-    {"name": "Wi-Fi", "icon": 217, "command": "wifi", "column": 2, "row": 0},
-    {"name": "Sketch", "icon": 39, "command": "sketch", "column": 0, "row": 1}
+    {"name": "Files", "icon": "folder", "command": "files", "column": 0, "row": 0},
+    {"name": "Manual", "icon": "book", "command": "help", "column": 1, "row": 0},
+    {"name": "Wi-Fi", "icon": "wifi", "command": "wifi", "column": 2, "row": 0},
+    {"name": "Sketch", "icon": "brush", "command": "sketch", "column": 0, "row": 1}
   ]
 }
 ```
 
-Icon IDs use the zero-based order in `solar_os_gfx_icons.h`, from 0 through
-222. Common IDs include Book 33, Browser 38, Brush 39, Calculator 42,
-Clock 59, Cog 65, Document 82, Folder 107, Home 120, Musical Note 161, Pencil
-163, Terminal 201, and Wi-Fi 217.
+Icon names are the lowercase, hyphenated Open Iconic names, such as `book`,
+`browser`, `brush`, `calculator`, `clock`, `cog`, `document`, `folder`, `home`,
+`musical-note`, `pencil`, `tablet`, `terminal`, and `wifi`. Legacy numeric IDs
+from 0 through 222 remain accepted for existing configurations.
 
 Commands use the normal SolarOS shell parser, so arguments, aliases, scripts,
 and application availability checks behave exactly as at the prompt. A launched

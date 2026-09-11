@@ -596,6 +596,7 @@ sources = [
   "services/solar_os_display.c",
   "services/solar_os_frame_presenter.c",
   "services/solar_os_gfx.c",
+  "services/solar_os_gfx_icons.c",
   "services/solar_os_identity.c",
   "services/solar_os_input.c",
   "services/solar_os_keys.c",

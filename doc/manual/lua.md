@@ -702,6 +702,8 @@ Functions:
 - `pixel(x, y)`, `line(x0, y0, x1, y1)`
 - `rect(x, y, width, height)`, `fill_rect(x, y, width, height)`
 - `circle(x, y, radius)`, `fill_circle(x, y, radius)`
+- `icon(x, y, name, size)` with a lowercase, hyphenated Open Iconic name such
+  as `tablet`; size is `8`, `16`, `32`, `48`, or `64`
 - `bitmap(x, y, width, height, data)`, `sprite(...)` alias
 - `text(x, baseline_y, text)`
 - `refresh()`, `present()`

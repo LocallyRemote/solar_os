@@ -190,6 +190,7 @@ typedef enum {
     SOLUA_EVENT_GFX_FILL_RECT,
     SOLUA_EVENT_GFX_CIRCLE,
     SOLUA_EVENT_GFX_FILL_CIRCLE,
+    SOLUA_EVENT_GFX_ICON,
     SOLUA_EVENT_GFX_BITMAP,
     SOLUA_EVENT_GFX_TEXT,
     SOLUA_EVENT_DONE,
@@ -684,6 +685,23 @@ static solar_os_gfx_font_t solua_gfx_font_from_arg(lua_State *L, int index)
         luaL_error(L, "expected gfx font");
     }
     return (solar_os_gfx_font_t)value;
+}
+
+static solar_os_gfx_icon_size_t solua_gfx_icon_size_from_arg(lua_State *L,
+                                                              int index)
+{
+    const lua_Integer value = luaL_checkinteger(L, index);
+    switch (value) {
+    case SOLAR_OS_GFX_ICON_SIZE_8:
+    case SOLAR_OS_GFX_ICON_SIZE_16:
+    case SOLAR_OS_GFX_ICON_SIZE_32:
+    case SOLAR_OS_GFX_ICON_SIZE_48:
+    case SOLAR_OS_GFX_ICON_SIZE_64:
+        return (solar_os_gfx_icon_size_t)value;
+    default:
+        luaL_error(L, "icon size must be 8, 16, 32, 48, or 64");
+        return SOLAR_OS_GFX_ICON_SIZE_8;
+    }
 }
 
 static void solua_resolve_path(lua_State *L, int index, char *path, size_t path_len)
@@ -6753,6 +6771,23 @@ static int solua_gfx_fill_circle(lua_State *L)
     return 0;
 }
 
+static int solua_gfx_icon(lua_State *L)
+{
+    solar_os_gfx_icon_t icon;
+    if (solar_os_gfx_icon_from_name(luaL_checkstring(L, 3), &icon) != ESP_OK) {
+        return luaL_error(L, "unknown icon name");
+    }
+    const solua_event_t event = {
+        .type = SOLUA_EVENT_GFX_ICON,
+        .x0 = (int32_t)luaL_checkinteger(L, 1),
+        .y0 = (int32_t)luaL_checkinteger(L, 2),
+        .width = (uint16_t)solua_gfx_icon_size_from_arg(L, 4),
+        .attr = (uint32_t)icon,
+    };
+    solua_ui_send_event(L, &event);
+    return 0;
+}
+
 static int solua_gfx_bitmap(lua_State *L)
 {
     const uint16_t width = solua_check_u16_size(L, 3);
@@ -8044,6 +8079,13 @@ static void solua_apply_gfx_event(solar_os_context_t *ctx, const solua_event_t *
     case SOLUA_EVENT_GFX_FILL_CIRCLE:
         solar_os_gfx_fill_circle(gfx, (int)event->x0, (int)event->y0, (int)event->width);
         break;
+    case SOLUA_EVENT_GFX_ICON:
+        solar_os_gfx_icon(gfx,
+                          (int)event->x0,
+                          (int)event->y0,
+                          (solar_os_gfx_icon_t)event->attr,
+                          (solar_os_gfx_icon_size_t)event->width);
+        break;
     case SOLUA_EVENT_GFX_BITMAP:
         solar_os_gfx_bitmap(gfx,
                             (int)event->x0,
@@ -8126,6 +8168,7 @@ static void solua_drain_events(solar_os_context_t *ctx)
         case SOLUA_EVENT_GFX_FILL_RECT:
         case SOLUA_EVENT_GFX_CIRCLE:
         case SOLUA_EVENT_GFX_FILL_CIRCLE:
+        case SOLUA_EVENT_GFX_ICON:
         case SOLUA_EVENT_GFX_BITMAP:
         case SOLUA_EVENT_GFX_TEXT:
             solua_apply_gfx_event(ctx, &event);

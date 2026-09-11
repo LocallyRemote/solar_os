@@ -1513,6 +1513,8 @@ Functions:
 - `fill_rect(x, y, width, height)`: draw a filled rectangle.
 - `circle(x, y, radius)`: draw a circle outline.
 - `fill_circle(x, y, radius)`: draw a filled circle.
+- `icon(x, y, name, size)`: draw a named Open Iconic symbol; use a lowercase,
+  hyphenated name such as `tablet`; size is `8`, `16`, `32`, `48`, or `64`.
 - `bitmap(x, y, width, height, data)`: draw a transparent packed 1-bit XBM.
 - `sprite(x, y, width, height, data)`: alias for `bitmap()`.
 - `text(x, baseline_y, text)`: draw UTF-8 text.

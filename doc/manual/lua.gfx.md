@@ -59,6 +59,16 @@ local person = string.char(0x18, 0x3c, 0x18, 0x7e, 0x18, 0x24, 0x42, 0x00)
 gfx.sprite(20, 20, 8, 8, person)
 ```
 
+## Icons
+
+`gfx.icon(x, y, name, size)` draws an Open Iconic symbol in the current color.
+Names are lowercase and hyphenated, such as `folder`, `tablet`, and
+`musical-note`. Size must be `8`, `16`, `32`, `48`, or `64` pixels.
+
+```lua
+gfx.icon(20, 20, "tablet", 32)
+```
+
 ## Colors
 
 Use `gfx.WHITE`, `gfx.LIGHT`, `gfx.DARK`, `gfx.BLACK`, `gfx.gray(level)`, or
@@ -74,7 +84,7 @@ then assign local gfx = solaros.gfx. gfx.begin() uses the current foreground
 display and errors from a port/headless shell where there is none. For an
 attached display, the agent must call display_list and pass a returned ready
 name; absent names raise ESP_ERR_NOT_FOUND. Use width, height or size; clear;
-color; pixel, line, rect, fill_rect, circle, fill_circle, text; refresh or
+color; pixel, line, rect, fill_rect, circle, fill_circle, icon, text; refresh or
 present. Use bitmap(x, y, width, height, data) or its sprite alias for
 transparent packed 1-bit XBM data, with at most 128 bytes per call. Colors are
 gfx.WHITE, gfx.LIGHT, gfx.DARK, gfx.BLACK, and

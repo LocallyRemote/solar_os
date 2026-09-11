@@ -24,6 +24,7 @@
 #define LAUNCHER_GRID_MAX 8U
 #define LAUNCHER_ITEM_MAX 32U
 #define LAUNCHER_NAME_MAX 48U
+#define LAUNCHER_ICON_NAME_MAX 32U
 #define LAUNCHER_COMMAND_MAX 192U
 #define LAUNCHER_TICK_MS 40U
 
@@ -59,12 +60,12 @@ static const char launcher_default_config[] =
     "{\n"
     "  \"layout\": {\"columns\": 3, \"rows\": 2},\n"
     "  \"items\": [\n"
-    "    {\"name\": \"Files\", \"icon\": 107, \"command\": \"files\", \"column\": 0, \"row\": 0},\n"
-    "    {\"name\": \"Manual\", \"icon\": 33, \"command\": \"help\", \"column\": 1, \"row\": 0},\n"
-    "    {\"name\": \"Wi-Fi\", \"icon\": 217, \"command\": \"wifi\", \"column\": 2, \"row\": 0},\n"
-    "    {\"name\": \"Clock\", \"icon\": 59, \"command\": \"clock\", \"column\": 0, \"row\": 1},\n"
-    "    {\"name\": \"Calculator\", \"icon\": 42, \"command\": \"calc\", \"column\": 1, \"row\": 1},\n"
-    "    {\"name\": \"Writer\", \"icon\": 163, \"command\": \"writer\", \"column\": 2, \"row\": 1}\n"
+    "    {\"name\": \"Files\", \"icon\": \"folder\", \"command\": \"files\", \"column\": 0, \"row\": 0},\n"
+    "    {\"name\": \"Manual\", \"icon\": \"book\", \"command\": \"help\", \"column\": 1, \"row\": 0},\n"
+    "    {\"name\": \"Wi-Fi\", \"icon\": \"wifi\", \"command\": \"wifi\", \"column\": 2, \"row\": 0},\n"
+    "    {\"name\": \"Clock\", \"icon\": \"clock\", \"command\": \"clock\", \"column\": 0, \"row\": 1},\n"
+    "    {\"name\": \"Calculator\", \"icon\": \"calculator\", \"command\": \"calc\", \"column\": 1, \"row\": 1},\n"
+    "    {\"name\": \"Writer\", \"icon\": \"pencil\", \"command\": \"writer\", \"column\": 2, \"row\": 1}\n"
     "  ]\n"
     "}\n";
 
@@ -87,6 +88,34 @@ static bool launcher_text_valid(const char *text)
         }
     }
     return true;
+}
+
+static esp_err_t launcher_parse_icon(const solar_os_json_value_t *item,
+                                     solar_os_gfx_icon_t *icon)
+{
+    if (item == NULL || icon == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    const solar_os_json_value_t *value =
+        solar_os_json_object_get(item, "icon");
+    if (solar_os_json_is_string(value)) {
+        char name[LAUNCHER_ICON_NAME_MAX];
+        esp_err_t err = solar_os_json_get_string(value, name, sizeof(name));
+        return err == ESP_OK ? solar_os_gfx_icon_from_name(name, icon) : err;
+    }
+    if (solar_os_json_is_number(value)) {
+        uint32_t numeric = 0U;
+        esp_err_t err = solar_os_json_get_uint32(value, &numeric);
+        if (err == ESP_OK && numeric >= SOLAR_OS_GFX_ICON_COUNT) {
+            err = ESP_ERR_INVALID_ARG;
+        }
+        if (err == ESP_OK) {
+            *icon = (solar_os_gfx_icon_t)numeric;
+        }
+        return err;
+    }
+    return ESP_ERR_INVALID_ARG;
 }
 
 static bool launcher_config_fits(const solar_os_gfx_t *gfx)
@@ -268,7 +297,7 @@ static esp_err_t launcher_parse_config(const char *source, size_t source_len)
     for (size_t i = 0U; err == ESP_OK && i < item_count; i++) {
         const solar_os_json_value_t *value = solar_os_json_array_get(items, i);
         launcher_item_t *item = &launcher.config.items[i];
-        uint32_t icon = 0U;
+        solar_os_gfx_icon_t icon = SOLAR_OS_GFX_ICON_ACCOUNT_LOGIN;
         uint32_t column = 0U;
         uint32_t row = 0U;
         if (!solar_os_json_is_object(value)) {
@@ -278,7 +307,7 @@ static esp_err_t launcher_parse_config(const char *source, size_t source_len)
         err = solar_os_json_get_path_string(value, "name",
                                             item->name, sizeof(item->name));
         if (err == ESP_OK) {
-            err = solar_os_json_get_path_uint32(value, "icon", &icon);
+            err = launcher_parse_icon(value, &icon);
         }
         if (err == ESP_OK) {
             err = solar_os_json_get_path_string(value, "command",
@@ -294,10 +323,10 @@ static esp_err_t launcher_parse_config(const char *source, size_t source_len)
         if (err == ESP_OK &&
             (!launcher_text_valid(item->name) ||
              !launcher_text_valid(item->command) ||
-             icon >= SOLAR_OS_GFX_ICON_COUNT || column >= columns || row >= rows)) {
+             column >= columns || row >= rows)) {
             err = ESP_ERR_INVALID_ARG;
         }
-        item->icon = (solar_os_gfx_icon_t)icon;
+        item->icon = icon;
         item->cell.column = (uint8_t)column;
         item->cell.row = (uint8_t)row;
     }

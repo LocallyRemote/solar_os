@@ -74,6 +74,16 @@ person = bytes((0x18, 0x3C, 0x18, 0x7E, 0x18, 0x24, 0x42, 0x00))
 gfx.sprite(20, 20, 8, 8, person)
 ```
 
+## Icons
+
+`gfx.icon(x, y, name, size)` draws an Open Iconic symbol in the current color.
+Names are lowercase and hyphenated, such as `folder`, `tablet`, and
+`musical-note`. Size must be `8`, `16`, `32`, `48`, or `64` pixels.
+
+```python
+gfx.icon(20, 20, "tablet", 32)
+```
+
 ## Quick reference
 
 Python: import solaros; from solaros import gfx. gfx.begin() uses the current
@@ -82,7 +92,7 @@ there is none. For an attached display, the agent must call display_list and
 pass a returned ready name to gfx.begin(name); scripts can verify names with
 solaros.expansion.devices(). An absent name raises ESP_ERR_NOT_FOUND. Use
 width(), height(), or size(); clear(color); color(color); pixel, line, rect,
-fill_rect, circle, fill_circle, text; refresh() or present(); then end().
+fill_rect, circle, fill_circle, icon, text; refresh() or present(); then end().
 Use bitmap(x, y, width, height, data) or its sprite alias for transparent
 packed 1-bit XBM data, with at most 128 bytes per call.
 Standard min() and max() are available. Colors are gfx.WHITE, gfx.LIGHT,
