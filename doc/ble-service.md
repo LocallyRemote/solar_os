@@ -123,10 +123,14 @@ are rediscovered per connection, not persisted to NVS. Forget removes the
 NimBLE bond synchronously and clears remembered state only after success or
 confirmation that the bond is absent.
 
-The firmware selects NimBLE central/observer roles only. Peripheral/server
-support is a separate API increment. Existing local generated `sdkconfig.*`
-files must also select `CONFIG_BT_NIMBLE_ENABLED=y` and disable
-`CONFIG_BT_BLUEDROID_ENABLED`; repository defaults select NimBLE for fresh builds.
+The firmware enables NimBLE central/observer roles plus peripheral/GATT-server
+support so incoming ATT requests, including MTU exchange, have server handlers.
+This does not start advertising or expose application-defined services; the
+application peripheral/server API remains a separate increment. Broadcaster
+support remains disabled. Existing local generated `sdkconfig.*` files must
+select `CONFIG_BT_NIMBLE_ENABLED=y`, `CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y`,
+and `CONFIG_BT_NIMBLE_GATT_SERVER=y`, and disable
+`CONFIG_BT_BLUEDROID_ENABLED`; repository defaults select these for fresh builds.
 
 ## Existing GATT limits
 
