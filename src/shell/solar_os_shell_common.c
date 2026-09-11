@@ -1,4 +1,5 @@
 #include "solar_os_shell_common.h"
+#include "solar_os_ble.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -100,6 +101,8 @@ const char *solar_os_shell_error_text(esp_err_t error)
         return "not supported by this board or firmware";
     case ESP_ERR_TIMEOUT:
         return "timed out; check the target and retry";
+    case SOLAR_OS_BLE_ERR_CANCELLED:
+        return "BLE operation cancelled";
     case ESP_ERR_INVALID_RESPONSE:
         return "device or server returned an invalid response";
     case ESP_ERR_INVALID_CRC:

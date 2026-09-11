@@ -2894,7 +2894,8 @@ void solar_os_ble_backend_resume(void)
     pairing_retry_pending = false;
     pairing_scan_stop_requested = false;
 
-    const esp_err_t ret = solar_os_ble_keyboard_init();
+    /* The general service already serializes this lifecycle transition. */
+    const esp_err_t ret = solar_os_ble_backend_init();
     if (ret != ESP_OK) {
         SOLAR_OS_LOGW(TAG, "resume: BLE init failed: %s", esp_err_to_name(ret));
         set_status(BLE_KEYBOARD_FAILED, "resume failed");

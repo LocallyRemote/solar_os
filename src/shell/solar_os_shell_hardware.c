@@ -1300,7 +1300,7 @@ static void ble_cmd_gatt(solar_os_shell_io_t *term, int argc, char **argv)
         }
         const esp_err_t err = solar_os_ble_gatt_disconnect();
         if (err == ESP_OK) {
-            solar_os_shell_io_writeln(term, "BLE GATT disconnected");
+            solar_os_shell_io_writeln(term, "BLE GATT disconnect requested");
         } else {
             solar_os_shell_io_printf(term, "ble gatt disconnect failed: %s\n", solar_os_shell_error_text(err));
         }

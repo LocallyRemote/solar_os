@@ -717,7 +717,7 @@ xfer recv <port> <file> --zmodem [--append|--replace]
 | `ble` | `ble forget` | Erase the remembered keyboard, its BLE bond, and its cached GATT service database. |
 | `ble gatt` | `ble gatt status` | Show the generic GATT connection state and discovered-service count. |
 | `ble gatt` | `ble gatt connect <aa:bb:cc:dd:ee:ff> <public\|random\|rpa_public\|rpa_random>` | Connect to a BLE peripheral by address and address type. |
-| `ble gatt` | `ble gatt disconnect` | Disconnect the generic GATT client. |
+| `ble gatt` | `ble gatt disconnect` | Request disconnect of the shell's GATT session and cancel its pending operation. |
 | `ble gatt` | `ble gatt services` | List discovered services and their indexes and handle ranges. |
 | `ble gatt` | `ble gatt chars <service-index>` | List the characteristics discovered for one service. |
 | `ble gatt` | `ble gatt read <handle>` | Read a characteristic or descriptor by handle. |
@@ -765,6 +765,13 @@ ble gatt read <handle>
 ble gatt write <handle> <hex...>
 ble gatt write-nr <handle> <hex...>
 ```
+
+The shell GATT session shares one generic peer slot with native app BLE
+sessions. It cannot read or disconnect an app-owned connection. Disconnect and
+operation timeout retire the connection asynchronously; reconnect can report
+busy until cleanup finishes. A write without response waits for local stack
+completion, not a remote acknowledgement. Generic scans are unavailable while
+the generic peer slot is active or retiring.
 
 MQTT usage:
 

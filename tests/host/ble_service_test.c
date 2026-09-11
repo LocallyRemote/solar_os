@@ -1,105 +1,71 @@
 #include <assert.h>
+#include <pthread.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "solar_os_ble.h"
 #include "solar_os_ble_backend.h"
-#include <freertos/semphr.h>
 
-struct ble_test_semaphore {
-    unsigned count;
-    bool mutex;
-};
-
-static struct ble_test_semaphore semaphores[2];
-static unsigned allocated;
-static bool initialized;
-static uint16_t completion_status;
+static pthread_mutex_t fake_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t fake_changed = PTHREAD_COND_INITIALIZER;
+static solar_os_ble_backend_event_t submitted;
+static unsigned submissions, cancellations;
+static uint32_t fake_epoch;
+static bool initialized, defer_connect, defer_read;
+static bool write_response;
 static esp_err_t submit_result;
-static bool withhold_read;
-static bool disconnect_on_read;
-static bool wrote_with_response;
-static unsigned scan_calls;
-static unsigned resume_calls;
-static size_t discovery_count = 1;
 static const uint8_t peer[6] = {1, 2, 3, 4, 5, 6};
 
-SemaphoreHandle_t xSemaphoreCreateMutex(void)
+static void record(solar_os_ble_backend_event_t event)
 {
-    assert(allocated < 2);
-    SemaphoreHandle_t sem = &semaphores[allocated++];
-    sem->count = 1;
-    sem->mutex = true;
-    return sem;
+    pthread_mutex_lock(&fake_lock);
+    submitted = event;
+    submissions++;
+    pthread_cond_broadcast(&fake_changed);
+    pthread_mutex_unlock(&fake_lock);
 }
 
-SemaphoreHandle_t xSemaphoreCreateBinary(void)
+static unsigned submission_count(void)
 {
-    assert(allocated < 2);
-    return &semaphores[allocated++];
+    pthread_mutex_lock(&fake_lock);
+    const unsigned n = submissions;
+    pthread_mutex_unlock(&fake_lock);
+    return n;
 }
 
-int xSemaphoreTake(SemaphoreHandle_t sem, unsigned timeout)
+static solar_os_ble_backend_event_t await_submission(unsigned after)
 {
-    (void)timeout;
-    assert(sem != NULL);
-    /* Reentrant backend calls expose any service lock held across dispatch. */
-    if (sem->mutex) {
-        assert(sem->count == 1);
+    struct timespec deadline;
+    clock_gettime(CLOCK_REALTIME, &deadline);
+    deadline.tv_sec += 2;
+    pthread_mutex_lock(&fake_lock);
+    while (submissions == after) {
+        assert(pthread_cond_timedwait(&fake_changed, &fake_lock, &deadline) == 0);
     }
-    if (sem->count == 0) {
-        return pdFALSE;
-    }
-    sem->count = 0;
-    return pdTRUE;
+    solar_os_ble_backend_event_t event = submitted;
+    pthread_mutex_unlock(&fake_lock);
+    return event;
 }
 
-int xSemaphoreGive(SemaphoreHandle_t sem)
+static void retired(void)
 {
-    assert(sem != NULL);
-    sem->count = 1;
-    return pdTRUE;
-}
-
-size_t strlcpy(char *dst, const char *src, size_t size)
-{
-    const size_t len = strlen(src);
-    if (size != 0) {
-        const size_t copied = len < size - 1 ? len : size - 1;
-        memcpy(dst, src, copied);
-        dst[copied] = '\0';
-    }
-    return len;
-}
-
-const char *esp_err_to_name(esp_err_t err)
-{
-    (void)err;
-    return "test error";
-}
-
-esp_err_t solar_os_ble_backend_register(void)
-{
-    const solar_os_ble_backend_event_t event = {
-        .type = SOLAR_OS_BLE_BACKEND_REGISTERED,
-        .status = completion_status,
-        .result = completion_status == 0 ? ESP_OK : ESP_FAIL,
+    solar_os_ble_backend_event_t event = {
+        .type = SOLAR_OS_BLE_BACKEND_RETIRED, .epoch = fake_epoch,
     };
+    fake_epoch = 0;
     solar_os_ble_service_event(&event);
-    return ESP_OK;
 }
 
-void solar_os_ble_backend_reset(void) {}
+esp_err_t solar_os_ble_backend_register(void) { return ESP_OK; }
+void solar_os_ble_backend_reset(void) { fake_epoch = 0; }
 
 esp_err_t solar_os_ble_backend_init(void)
 {
-    if (initialized) {
-        return ESP_OK;
+    if (!initialized) {
+        initialized = solar_os_ble_service_register() == ESP_OK;
     }
-    assert(solar_os_ble_service_prepare_runtime() == ESP_OK);
-    const esp_err_t ret = solar_os_ble_service_register();
-    initialized = ret == ESP_OK;
-    return ret;
+    return initialized ? ESP_OK : ESP_FAIL;
 }
 
 esp_err_t solar_os_ble_backend_scan(solar_os_ble_scan_result_t *results,
@@ -108,7 +74,6 @@ esp_err_t solar_os_ble_backend_scan(solar_os_ble_scan_result_t *results,
     assert(max_results == 1);
     memcpy(results[0].bda, peer, sizeof(peer));
     *found = 1;
-    scan_calls++;
     return ESP_OK;
 }
 
@@ -116,42 +81,39 @@ esp_err_t solar_os_ble_backend_prepare_sleep(uint32_t timeout_ms)
 {
     assert(timeout_ms == 1500);
     solar_os_ble_service_reset("sleep");
+    solar_os_ble_backend_reset();
     initialized = false;
     return ESP_OK;
 }
 
 bool solar_os_ble_backend_sleep_prepare_ready(void) { return true; }
-void solar_os_ble_backend_resume(void) { resume_calls++; }
+void solar_os_ble_backend_resume(void) { assert(solar_os_ble_backend_init() == ESP_OK); }
 
-esp_err_t solar_os_ble_backend_connect(const uint8_t bda[6], uint8_t addr_type)
+esp_err_t solar_os_ble_backend_connect(uint32_t epoch, uint32_t request,
+    const uint8_t bda[6], uint8_t addr_type)
 {
-    assert(memcmp(bda, peer, sizeof(peer)) == 0);
-    assert(addr_type == SOLAR_OS_BLE_ADDR_RANDOM);
+    assert(fake_epoch == 0 && epoch != 0 && request != 0);
+    assert(memcmp(bda, peer, sizeof(peer)) == 0 && addr_type == SOLAR_OS_BLE_ADDR_RANDOM);
     if (submit_result != ESP_OK) {
         return submit_result;
     }
+    fake_epoch = epoch;
     solar_os_ble_backend_event_t event = {
-        .type = SOLAR_OS_BLE_BACKEND_OPENED,
-        .conn_id = 7,
-        .mtu = 23,
-        .status = completion_status,
-        .result = completion_status == 0 ? ESP_OK : ESP_FAIL,
+        .type = SOLAR_OS_BLE_BACKEND_OPENED, .epoch = epoch, .request = request,
+        .conn_id = 7, .mtu = 23,
     };
-    memcpy(event.bda, bda, sizeof(event.bda));
+    memcpy(event.bda, peer, sizeof(peer));
+    record(event);
+    if (defer_connect) {
+        return ESP_OK;
+    }
     solar_os_ble_service_event(&event);
-    return ESP_OK;
-}
-
-esp_err_t solar_os_ble_backend_discover(uint16_t conn_id)
-{
-    assert(conn_id == 7);
-    solar_os_ble_backend_event_t event = {
-        .type = SOLAR_OS_BLE_BACKEND_SERVICE,
-        .conn_id = conn_id,
-        .service = {.start_handle = 1, .end_handle = 9, .primary = true},
-    };
+    event.type = SOLAR_OS_BLE_BACKEND_SERVICE;
+    event.service.start_handle = 1;
+    event.service.end_handle = 9;
+    event.service.primary = true;
     strcpy(event.service.uuid, "0x180f");
-    for (size_t i = 0; i < discovery_count; i++) {
+    for (unsigned i = 0; i < SOLAR_OS_BLE_GATT_MAX_SERVICES + 1; i++) {
         solar_os_ble_service_event(&event);
     }
     event.type = SOLAR_OS_BLE_BACKEND_MTU;
@@ -162,19 +124,22 @@ esp_err_t solar_os_ble_backend_discover(uint16_t conn_id)
     return ESP_OK;
 }
 
-esp_err_t solar_os_ble_backend_disconnect(uint16_t conn_id)
+esp_err_t solar_os_ble_backend_cancel(uint32_t epoch)
 {
-    assert(conn_id == 7);
-    return submit_result;
+    assert(epoch == fake_epoch && epoch != 0);
+    cancellations++;
+    /* Logical cancellation is immediate; transport retirement is controlled
+     * separately by the test, like an asynchronous stack unregister event. */
+    return ESP_OK;
 }
 
-esp_err_t solar_os_ble_backend_characteristics(uint16_t conn_id,
+esp_err_t solar_os_ble_backend_characteristics(uint32_t epoch,
     const solar_os_ble_gatt_service_t *service,
     solar_os_ble_gatt_characteristic_t *characteristics,
     size_t max_characteristics, size_t *count)
 {
-    assert(conn_id == 7 && service->start_handle == 1);
-    if (max_characteristics > 0) {
+    assert(epoch == fake_epoch && service->start_handle == 1);
+    if (max_characteristics != 0) {
         characteristics[0].handle = 3;
         characteristics[0].properties = SOLAR_OS_BLE_CHAR_READ;
         strcpy(characteristics[0].uuid, "0x2a19");
@@ -183,117 +148,203 @@ esp_err_t solar_os_ble_backend_characteristics(uint16_t conn_id,
     return ESP_OK;
 }
 
-esp_err_t solar_os_ble_backend_read(uint16_t conn_id, uint16_t handle)
+esp_err_t solar_os_ble_backend_read(uint32_t epoch, uint32_t request, uint16_t handle)
 {
-    assert(conn_id == 7 && handle == 3);
-    if (submit_result != ESP_OK || withhold_read) {
+    assert(epoch == fake_epoch && handle == 3);
+    if (submit_result != ESP_OK) {
         return submit_result;
     }
     uint8_t value[SOLAR_OS_BLE_GATT_VALUE_MAX + 1];
     memset(value, 0x42, sizeof(value));
     solar_os_ble_backend_event_t event = {
-        .type = disconnect_on_read ? SOLAR_OS_BLE_BACKEND_CLOSED : SOLAR_OS_BLE_BACKEND_READ,
-        .conn_id = conn_id,
-        .handle = handle,
-        .status = completion_status,
-        .result = completion_status == 0 ? ESP_OK : ESP_FAIL,
-        .value = value,
-        .value_len = sizeof(value),
+        .type = SOLAR_OS_BLE_BACKEND_READ, .epoch = epoch, .request = request,
+        .conn_id = 7, .handle = handle,
     };
-    solar_os_ble_service_event(&event);
-    /* The service must have copied the borrowed buffer before returning. */
-    memset(value, 0xee, sizeof(value));
-    return ESP_OK;
-}
-
-esp_err_t solar_os_ble_backend_write(uint16_t conn_id, uint16_t handle,
-    const uint8_t *value, size_t value_len, bool with_response)
-{
-    assert(conn_id == 7 && handle == 3 && value_len == 2);
-    assert(value[0] == 0 && value[1] == 0xff);
-    wrote_with_response = with_response;
-    const solar_os_ble_backend_event_t event = {
-        .type = SOLAR_OS_BLE_BACKEND_WRITTEN,
-        .conn_id = conn_id,
-        .handle = handle,
-        .status = completion_status,
-        .result = completion_status == 0 ? ESP_OK : ESP_FAIL,
-    };
-    if (with_response) {
+    record(event);
+    if (!defer_read) {
+        event.value = value;
+        event.value_len = sizeof(value);
         solar_os_ble_service_event(&event);
+        memset(value, 0xee, sizeof(value)); /* service must copy before returning */
     }
     return ESP_OK;
 }
 
+esp_err_t solar_os_ble_backend_write(uint32_t epoch, uint32_t request, uint16_t handle,
+    const uint8_t *value, size_t value_len, bool with_response)
+{
+    assert(epoch == fake_epoch && handle == 3 && value_len == 2);
+    assert(value[0] == 0 && value[1] == 0xff);
+    write_response = with_response;
+    const solar_os_ble_backend_event_t event = {
+        .type = SOLAR_OS_BLE_BACKEND_WRITTEN, .epoch = epoch, .request = request,
+        .conn_id = 7, .handle = handle,
+    };
+    solar_os_ble_service_event(&event);
+    return ESP_OK;
+}
+
+typedef struct {
+    solar_os_ble_session_t id;
+    bool connect;
+    esp_err_t result;
+    uint8_t value[2];
+    size_t len;
+} call_t;
+
+static void *run_call(void *arg)
+{
+    call_t *call = arg;
+    call->result = call->connect ?
+        solar_os_ble_session_connect(call->id, peer, SOLAR_OS_BLE_ADDR_RANDOM, 2000) :
+        solar_os_ble_session_read(call->id, 3, call->value, sizeof(call->value), &call->len, 2000);
+    return NULL;
+}
+
+static void connect_session(solar_os_ble_session_t id)
+{
+    assert(solar_os_ble_session_connect(id, peer, SOLAR_OS_BLE_ADDR_RANDOM, 100) == ESP_OK);
+}
+
+static void assert_busy(solar_os_ble_session_t id)
+{
+    solar_os_ble_session_info_t info;
+    assert(solar_os_ble_session_get_info(id, &info) == ESP_OK && info.busy);
+}
+
 int main(void)
 {
-    solar_os_ble_gatt_status_t status;
-    solar_os_ble_gatt_get_status(&status);
-    assert(!status.connected && status.conn_id == SOLAR_OS_BLE_CONNECTION_INVALID);
-    assert(solar_os_ble_gatt_connect(NULL, 0, 0) == ESP_ERR_INVALID_ARG);
-    completion_status = 0x85;
-    assert(solar_os_ble_init() == ESP_FAIL);
-    completion_status = 0;
-    assert(solar_os_ble_init() == ESP_OK);
-    assert(solar_os_ble_init() == ESP_OK && allocated == 2);
+    solar_os_ble_session_t ids[SOLAR_OS_BLE_SESSION_MAX], extra;
+    assert(solar_os_ble_session_create("", &extra) == ESP_ERR_INVALID_ARG);
+    for (unsigned i = 0; i < SOLAR_OS_BLE_SESSION_MAX; i++) {
+        assert(solar_os_ble_session_create("test", &ids[i]) == ESP_OK);
+    }
+    assert(solar_os_ble_session_create("overflow", &extra) == ESP_ERR_NO_MEM);
+    const solar_os_ble_session_t stale = ids[3];
+    assert(solar_os_ble_session_close(stale) == ESP_OK);
+    assert(solar_os_ble_session_create("replacement", &ids[3]) == ESP_OK && ids[3] != stale);
+    assert(solar_os_ble_session_cancel(stale) == ESP_ERR_INVALID_STATE);
+    assert(solar_os_ble_session_close(stale) == ESP_ERR_INVALID_STATE);
+
     submit_result = ESP_ERR_NO_MEM;
-    assert(solar_os_ble_gatt_connect(peer, SOLAR_OS_BLE_ADDR_RANDOM, 0) == ESP_ERR_NO_MEM);
+    assert(solar_os_ble_session_connect(ids[0], peer, SOLAR_OS_BLE_ADDR_RANDOM, 100) == ESP_ERR_NO_MEM);
     submit_result = ESP_OK;
-    completion_status = 0x85;
-    assert(solar_os_ble_gatt_connect(peer, SOLAR_OS_BLE_ADDR_RANDOM, 0) == ESP_FAIL);
-    completion_status = 0;
-    assert(solar_os_ble_gatt_connect(peer, SOLAR_OS_BLE_ADDR_RANDOM, 0) == ESP_OK);
-    solar_os_ble_gatt_get_status(&status);
-    assert(status.connected && status.conn_id == 7 && status.mtu == 247);
-    assert(status.addr_type == SOLAR_OS_BLE_ADDR_RANDOM && status.service_count == 1);
-    assert(memcmp(status.bda, peer, sizeof(peer)) == 0);
-    assert(solar_os_ble_gatt_connect(peer, SOLAR_OS_BLE_ADDR_RANDOM, 0) == ESP_ERR_INVALID_STATE);
+    connect_session(ids[0]);
+    solar_os_ble_session_info_t info;
+    assert(solar_os_ble_session_get_info(ids[0], &info) == ESP_OK);
+    assert(info.gatt.connected && info.gatt.mtu == 247 && info.gatt.conn_id == 7);
+    assert(info.gatt.service_count == SOLAR_OS_BLE_GATT_MAX_SERVICES);
+    solar_os_ble_scan_result_t scan;
+    size_t found = 123;
+    assert(solar_os_ble_scan(&scan, 1, &found) == ESP_ERR_INVALID_STATE && found == 0);
+    assert(solar_os_ble_session_connect(ids[1], peer, SOLAR_OS_BLE_ADDR_RANDOM, 1) == ESP_ERR_INVALID_STATE);
+    uint8_t value[2];
+    size_t count = 0;
+    assert(solar_os_ble_session_read(ids[1], 3, value, sizeof(value), &count, 1) == ESP_ERR_INVALID_STATE);
+    const unsigned before = cancellations;
+    assert(solar_os_ble_session_cancel(ids[1]) == ESP_OK && cancellations == before);
+    assert(solar_os_ble_gatt_read(3, value, sizeof(value), &count, 1) == ESP_ERR_INVALID_STATE);
+    assert(solar_os_ble_gatt_disconnect() == ESP_OK && cancellations == before);
 
     solar_os_ble_gatt_service_t service;
-    size_t count = 0;
-    assert(solar_os_ble_gatt_services(&service, 1, &count) == ESP_OK && count == 1);
-    assert(strcmp(service.uuid, "0x180f") == 0 && service.end_handle == 9);
+    assert(solar_os_ble_session_services(ids[0], &service, 1, &count) == ESP_OK);
+    assert(count == SOLAR_OS_BLE_GATT_MAX_SERVICES && strcmp(service.uuid, "0x180f") == 0);
     solar_os_ble_gatt_characteristic_t characteristic;
-    assert(solar_os_ble_gatt_characteristics(1, &characteristic, 1, &count) == ESP_ERR_NOT_FOUND);
-    assert(solar_os_ble_gatt_characteristics(0, &characteristic, 1, &count) == ESP_OK);
-    assert(count == 1 && characteristic.handle == 3);
+    assert(solar_os_ble_session_characteristics(ids[0], 0, &characteristic, 1, &count) == ESP_OK);
+    assert(characteristic.handle == 3);
+    assert(solar_os_ble_session_read(ids[0], 3, value, sizeof(value), &count, 100) == ESP_OK);
+    assert(count == SOLAR_OS_BLE_GATT_VALUE_MAX && value[0] == 0x42);
+    value[0] = 0; value[1] = 0xff;
+    assert(solar_os_ble_session_write(ids[0], 3, value, 2, false, 100) == ESP_OK && !write_response);
+    assert(solar_os_ble_session_write(ids[0], 3, value, 2, true, 100) == ESP_OK && write_response);
 
-    uint8_t value[2] = {0};
-    assert(solar_os_ble_gatt_read(3, value, sizeof(value), &count, 0) == ESP_OK);
-    assert(value[0] == 0x42 && value[1] == 0x42 && count == SOLAR_OS_BLE_GATT_VALUE_MAX);
-    completion_status = 5;
-    assert(solar_os_ble_gatt_read(3, value, sizeof(value), &count, 0) == ESP_FAIL && count == 0);
-    completion_status = 0;
-    withhold_read = true;
-    assert(solar_os_ble_gatt_read(3, value, sizeof(value), &count, 1) == ESP_ERR_TIMEOUT);
-    withhold_read = false;
-    value[0] = 0;
-    value[1] = 0xff;
-    assert(solar_os_ble_gatt_write(3, value, 2, true, 0) == ESP_OK && wrote_with_response);
-    assert(solar_os_ble_gatt_write(3, value, 2, false, 0) == ESP_OK && !wrote_with_response);
-    assert(solar_os_ble_gatt_write(3, value, SOLAR_OS_BLE_GATT_VALUE_MAX + 1, true, 0) == ESP_ERR_INVALID_ARG);
+    /* Close wakes an in-flight reader. Its result slot cannot belong to a new owner. */
+    defer_read = true;
+    unsigned n = submission_count();
+    call_t call = {.id = ids[0]};
+    pthread_t thread;
+    assert(pthread_create(&thread, NULL, run_call, &call) == 0);
+    solar_os_ble_backend_event_t old_read = await_submission(n);
+    assert_busy(ids[0]);
+    assert(solar_os_ble_session_read(ids[0], 3, value, sizeof(value), &count, 1) == ESP_ERR_INVALID_STATE);
+    assert(solar_os_ble_session_close(ids[0]) == ESP_OK);
+    assert(pthread_join(thread, NULL) == 0 && call.result == SOLAR_OS_BLE_ERR_CANCELLED);
+    assert(solar_os_ble_session_get_info(ids[0], &info) == ESP_ERR_INVALID_STATE);
+    assert(solar_os_ble_session_connect(ids[1], peer, SOLAR_OS_BLE_ADDR_RANDOM, 1) == ESP_ERR_INVALID_STATE);
+    retired();
+    connect_session(ids[1]); /* Same backend conn_id and characteristic handles. */
 
-    disconnect_on_read = true;
-    assert(solar_os_ble_gatt_read(3, value, sizeof(value), &count, 0) == ESP_FAIL);
-    solar_os_ble_gatt_get_status(&status);
-    assert(!status.connected && status.service_count == 0);
-    disconnect_on_read = false;
-    discovery_count = SOLAR_OS_BLE_GATT_MAX_SERVICES + 1;
-    assert(solar_os_ble_gatt_connect(peer, SOLAR_OS_BLE_ADDR_RANDOM, 0) == ESP_OK);
-    assert(solar_os_ble_gatt_services(&service, 1, &count) == ESP_OK);
-    assert(count == SOLAR_OS_BLE_GATT_MAX_SERVICES);
-    assert(solar_os_ble_gatt_disconnect() == ESP_OK);
-    assert(solar_os_ble_gatt_services(&service, 1, &count) == ESP_ERR_INVALID_STATE);
+    n = submission_count();
+    call = (call_t){.id = ids[1]};
+    assert(pthread_create(&thread, NULL, run_call, &call) == 0);
+    solar_os_ble_backend_event_t current = await_submission(n);
+    old_read.value = (const uint8_t *)"old";
+    old_read.value_len = 3;
+    solar_os_ble_service_event(&old_read);
+    old_read.type = SOLAR_OS_BLE_BACKEND_CLOSED;
+    solar_os_ble_service_event(&old_read);
+    assert_busy(ids[1]);
+    solar_os_ble_backend_event_t wrong = current;
+    wrong.request--;
+    solar_os_ble_service_event(&wrong);
+    wrong = current; wrong.handle++;
+    solar_os_ble_service_event(&wrong);
+    wrong = current; wrong.conn_id++;
+    solar_os_ble_service_event(&wrong);
+    assert_busy(ids[1]);
+    current.value = (const uint8_t *)"OK";
+    current.value_len = 2;
+    solar_os_ble_service_event(&current);
+    assert(pthread_join(thread, NULL) == 0 && call.result == ESP_OK);
+    assert(call.len == 2 && memcmp(call.value, "OK", 2) == 0);
 
-    solar_os_ble_scan_result_t scan;
-    assert(solar_os_ble_scan(&scan, 1, &count) == ESP_OK && count == 1 && scan_calls == 1);
+    /* A timeout quarantines its connection until retirement, not just its waiter. */
+    assert(solar_os_ble_session_read(ids[1], 3, value, 2, &count, 1) == ESP_ERR_TIMEOUT);
+    assert(solar_os_ble_session_get_info(ids[1], &info) == ESP_OK && info.retiring);
+    assert(solar_os_ble_session_read(ids[1], 3, value, 2, &count, 1) == ESP_ERR_INVALID_STATE);
+    retired();
+
+    /* Cancel while open is pending; a late successful OPEN cannot resurrect it. */
+    defer_connect = true;
+    n = submission_count();
+    call = (call_t){.id = ids[1], .connect = true};
+    assert(pthread_create(&thread, NULL, run_call, &call) == 0);
+    solar_os_ble_backend_event_t old_open = await_submission(n);
+    assert(solar_os_ble_session_cancel(ids[1]) == ESP_OK);
+    solar_os_ble_service_event(&old_open);
+    assert(pthread_join(thread, NULL) == 0 && call.result == SOLAR_OS_BLE_ERR_CANCELLED);
+    assert(solar_os_ble_session_get_info(ids[1], &info) == ESP_OK && !info.gatt.connected);
+    retired();
+    defer_connect = false;
+    connect_session(ids[1]);
+
+    /* Sleep cancels a reader, preserves its session, and invalidates old epochs. */
+    n = submission_count();
+    call = (call_t){.id = ids[1]};
+    assert(pthread_create(&thread, NULL, run_call, &call) == 0);
+    old_read = await_submission(n);
     assert(solar_os_ble_prepare_sleep(1500) == ESP_OK);
-    solar_os_ble_gatt_get_status(&status);
-    assert(!status.connected && strcmp(status.status, "sleep") == 0);
+    assert(pthread_join(thread, NULL) == 0 && call.result == SOLAR_OS_BLE_ERR_CANCELLED);
+    assert(solar_os_ble_session_connect(ids[1], peer, SOLAR_OS_BLE_ADDR_RANDOM, 1) == ESP_ERR_INVALID_STATE);
     assert(solar_os_ble_sleep_prepare_ready());
     solar_os_ble_resume();
-    assert(resume_calls == 1);
-    assert(solar_os_ble_init() == ESP_OK && allocated == 2);
-    puts("BLE service backend contract: OK");
+    connect_session(ids[1]);
+    solar_os_ble_service_event(&old_read);
+    solar_os_ble_service_event(&old_open);
+    assert(solar_os_ble_session_get_info(ids[1], &info) == ESP_OK && info.gatt.connected);
+    assert(solar_os_ble_session_cancel(ids[1]) == ESP_OK);
+    retired();
+    for (unsigned i = 1; i < SOLAR_OS_BLE_SESSION_MAX; i++) {
+        assert(solar_os_ble_session_close(ids[i]) == ESP_OK);
+    }
+
+    /* The reserved compatibility client still works when app slots are released. */
+    defer_read = false;
+    assert(solar_os_ble_gatt_connect(peer, SOLAR_OS_BLE_ADDR_RANDOM, 100) == ESP_OK);
+    assert(solar_os_ble_gatt_read(3, value, 2, &count, 100) == ESP_OK);
+    assert(solar_os_ble_gatt_disconnect() == ESP_OK);
+    retired();
+    assert(solar_os_ble_scan(&scan, 1, &found) == ESP_OK && found == 1);
+    puts("BLE sessions: ownership, cancellation, timeout, stale events, sleep and compatibility OK");
     return 0;
 }

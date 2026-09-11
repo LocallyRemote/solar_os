@@ -10,15 +10,21 @@ MANUAL_GENERATED_HEADER := $(MANUAL_GENERATED_DIR)/solar_os_manual_data.h
 
 .PHONY: all test clean
 
-TARGETS += ble_service_test
+TARGETS += ble_service_test ble_bluedroid_test
 
 all: $(TARGETS)
 
-ble_service_test: ble_service_test.c $(ROOT)/src/services/solar_os_ble.c \
+ble_service_test: ble_service_test.c ble_test_support.c $(ROOT)/src/services/solar_os_ble.c \
 		$(ROOT)/src/services/solar_os_ble.h $(ROOT)/src/services/solar_os_ble_backend.h \
 		ble_stubs/freertos/semphr.h
-	$(CC) $(CFLAGS) -include compat.h -Ible_stubs -I. -I$(ROOT)/src/services \
-		ble_service_test.c $(ROOT)/src/services/solar_os_ble.c -o $@
+	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200809L -pthread -include compat.h -Ible_stubs -I. -I$(ROOT)/src/services \
+		ble_service_test.c ble_test_support.c $(ROOT)/src/services/solar_os_ble.c -o $@
+
+ble_bluedroid_test: ble_bluedroid_test.c ble_test_support.c $(ROOT)/src/services/solar_os_ble_bluedroid.c \
+		$(ROOT)/src/services/solar_os_ble_backend.h $(ROOT)/src/services/solar_os_ble_bluedroid.h \
+		ble_stubs/esp_gattc_api.h ble_stubs/freertos/semphr.h
+	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200809L -pthread -include compat.h -Ible_stubs -I. -I$(ROOT)/src/services \
+		ble_bluedroid_test.c ble_test_support.c $(ROOT)/src/services/solar_os_ble_bluedroid.c -o $@
 
 writer_buffer_test: writer_buffer_test.c $(WRITER_DIR)/solar_os_writer_buffer.c $(WRITER_DIR)/solar_os_writer_buffer.h esp_err.h
 	$(CC) $(CFLAGS) -DSOLAR_OS_WRITER_HOST_TEST -I. -I$(WRITER_DIR) \
@@ -336,6 +342,7 @@ rtc_pcf85063_test: rtc_pcf85063_test.c \
 
 test: $(TARGETS)
 	./ble_service_test
+	./ble_bluedroid_test
 	./writer_buffer_test
 	./writer_files_test
 	./sketch_canvas_test

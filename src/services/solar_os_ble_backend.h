@@ -6,7 +6,7 @@
 #include "solar_os_ble.h"
 
 typedef enum {
-    SOLAR_OS_BLE_BACKEND_REGISTERED,
+    SOLAR_OS_BLE_BACKEND_RETIRED,
     SOLAR_OS_BLE_BACKEND_OPENED,
     SOLAR_OS_BLE_BACKEND_MTU,
     SOLAR_OS_BLE_BACKEND_SERVICE,
@@ -18,6 +18,8 @@ typedef enum {
 
 typedef struct {
     solar_os_ble_backend_event_type_t type;
+    uint32_t epoch;
+    uint32_t request;
     uint16_t conn_id;
     esp_err_t result; /* Host-independent success/failure. */
     uint16_t status; /* Backend diagnostic code, never used for service policy. */
@@ -44,15 +46,18 @@ esp_err_t solar_os_ble_backend_prepare_sleep(uint32_t timeout_ms);
 bool solar_os_ble_backend_sleep_prepare_ready(void);
 void solar_os_ble_backend_resume(void);
 
+/* register prepares the adapter; each connect owns a separate registration.
+ * RETIRED is a barrier: no further event for that epoch may be delivered.
+ * A cancelled/timed-out request must never be relabelled with a new token. */
 esp_err_t solar_os_ble_backend_register(void);
 void solar_os_ble_backend_reset(void);
-esp_err_t solar_os_ble_backend_connect(const uint8_t bda[6], uint8_t addr_type);
-esp_err_t solar_os_ble_backend_disconnect(uint16_t conn_id);
-esp_err_t solar_os_ble_backend_discover(uint16_t conn_id);
-esp_err_t solar_os_ble_backend_characteristics(uint16_t conn_id,
+esp_err_t solar_os_ble_backend_connect(uint32_t epoch, uint32_t request,
+    const uint8_t bda[6], uint8_t addr_type);
+esp_err_t solar_os_ble_backend_cancel(uint32_t epoch);
+esp_err_t solar_os_ble_backend_characteristics(uint32_t epoch,
     const solar_os_ble_gatt_service_t *service,
     solar_os_ble_gatt_characteristic_t *characteristics,
     size_t max_characteristics, size_t *count);
-esp_err_t solar_os_ble_backend_read(uint16_t conn_id, uint16_t handle);
-esp_err_t solar_os_ble_backend_write(uint16_t conn_id, uint16_t handle,
+esp_err_t solar_os_ble_backend_read(uint32_t epoch, uint32_t request, uint16_t handle);
+esp_err_t solar_os_ble_backend_write(uint32_t epoch, uint32_t request, uint16_t handle,
     const uint8_t *value, size_t value_len, bool with_response);
