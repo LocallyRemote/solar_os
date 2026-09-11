@@ -473,6 +473,12 @@ background roles.
 sessions and gives its space to the terminal. `show` restores it. The default is
 `show` when no value is stored in NVS.
 
+On BLE-capable builds, the status bar has a separate Bluetooth symbol: plain
+means enabled for the current boot, slashed means disabled, and a small search
+marker means scanning. The keyboard symbol shows only availability: plain when
+at least one keyboard is available, slashed otherwise, regardless of transport.
+Compact displays omit icons that do not fit before the clock and unread count.
+
 ## Apps And Jobs
 
 | Command | Usage | Description |
