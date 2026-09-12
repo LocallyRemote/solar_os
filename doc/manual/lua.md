@@ -95,6 +95,19 @@ service packages are not available on that board.
 
 Lua strings are binary-safe, so byte-oriented APIs such as `uart.read`, `i2c.read_reg`, `clipboard.get`, and `mqtt.read().payload` return Lua strings.
 
+### BLE scan
+
+`solaros.ble.scan()` returns a one-based array of device tables with the same
+fields and blocking behavior as [Python scan](python.md#solarosblescan).
+It includes non-keyboard devices, returns an empty table if none are found,
+and raises a Lua error on scan failure. Call it before opening GATT connections.
+
+```lua
+for _, device in ipairs(solaros.ble.scan()) do
+    print(device.address, device.addr_type, device.name, device.rssi)
+end
+```
+
 ### Generic BLE GATT client
 
 `solaros.ble.gatt` mirrors the [Python GATT client](python.md#solarosblegatt):

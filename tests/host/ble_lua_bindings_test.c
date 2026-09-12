@@ -55,6 +55,10 @@ static lua_State *new_vm(void)
     lua_newtable(L);
     luaL_setfuncs(L, methods, 0);
     lua_setglobal(L, "gatt");
+    lua_newtable(L);
+    lua_pushcfunction(L, solua_ble_scan);
+    lua_setfield(L, -2, "scan");
+    lua_setglobal(L, "ble");
     const luaL_Reg server_methods[] = {
         {"create", solua_ble_server_create}, {"service", solua_ble_server_service},
         {"characteristic", solua_ble_server_characteristic}, {"start", solua_ble_server_start},
@@ -87,6 +91,22 @@ int main(void)
 {
     assert(ble_service_suite() == 0);
     lua_State *L = new_vm();
+    run(L, "devices = ble.scan(); assert(#devices == 1); "
+        "d = devices[1]; assert(d.address == '01:02:03:04:05:06'); "
+        "assert(d.name == 'Sensor' and d.addr_type == 1 and d.rssi == -73); "
+        "assert(d.appearance == 961 and d.hid_service and d.remembered); "
+        "assert(d.keyboard_like == false and d.connected == false)");
+    scan_count = 0;
+    run(L, "assert(#ble.scan() == 0)");
+    scan_error = ESP_ERR_NOT_FOUND;
+    run(L, "assert(#ble.scan() == 0)");
+    scan_count = 1;
+    scan_error = ESP_FAIL;
+    run(L, "assert(not pcall(ble.scan))");
+    scan_error = ESP_OK;
+    atomic_store(&stopped, true);
+    run(L, "assert(not pcall(ble.scan))");
+    atomic_store(&stopped, false);
     run(L,
         "assert(not pcall(gatt.disconnect, 0)); "
         "assert(not pcall(gatt.connect, '01:02:03:04:05:06x', 1)); "
@@ -94,6 +114,7 @@ int main(void)
         "assert(not pcall(gatt.connect, '01:02:03:04:05:06', 4294967297)); "
         "assert(not pcall(gatt.connect, '01:02:03:04:05:06', 1, 4294967296)); "
         "peer = gatt.connect('01:02:03:04:05:06', 1); "
+        "assert(not pcall(ble.scan)); "
         "assert(type(peer) == 'number' and gatt.capacity() == 1); "
         "assert(not pcall(gatt.configure_queue, peer, 0)); "
         "assert(not pcall(gatt.configure_queue, peer, 4294967296)); "

@@ -1079,6 +1079,26 @@ print(solaros.ble.status())
 print("layout", solaros.ble.layout())
 ```
 
+### `solaros.ble.scan()`
+
+Available when BLE support is compiled. Returns a list of up to 32 device
+dictionaries, including non-keyboard devices. Each record contains `address`
+(colon-separated hex), `name` (possibly empty), integer `addr_type`, `rssi`
+(dBm), `appearance`, and booleans `hid_service`, `keyboard_like`,
+`remembered`, and `connected`. Address types are 0 public, 1 random,
+2 public identity, and 3 random identity.
+
+Uses the same blocking scan as shell `ble scan`, with no arguments. Scan errors
+raise `OSError`; no devices returns an empty list. Scanning is rejected during
+sleep preparation or while a generic GATT link is active or retiring. Scan
+before connecting. Script cancellation is checked before and after the blocking
+service call; it does not interrupt the radio scan.
+
+```python
+for device in solaros.ble.scan():
+    print(device["address"], device["addr_type"], device["name"], device["rssi"])
+```
+
 ### `solaros.ble.gatt`
 
 Available when BLE support is compiled. This synchronous client owns one session
@@ -1092,7 +1112,7 @@ own multiple peers, with independent operations and connection state.
   return an opaque peer handle.
   Use a colon-separated address such as `aa:bb:cc:dd:ee:ff`; address types are
   `0` public, `1` random, `2` public identity, and `3` random identity. Use
-  `ble scan` in the shell to find the address and type.
+  `solaros.ble.scan()` to find the address and type.
 - `disconnect(peer)`: invalidate the handle and request asynchronous disconnect.
   It cannot disconnect another runtime's or the shell's peer.
 - `status(peer)`: return `owner`, `address`, `addr_type`, `status`, `connected`,

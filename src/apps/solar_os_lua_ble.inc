@@ -10,6 +10,44 @@ static int solua_ble_check(lua_State *L, esp_err_t err)
     return solua_check_esp(L, err);
 }
 
+static int solua_ble_scan(lua_State *L)
+{
+    solar_os_ble_scan_result_t results[SOLAR_OS_BLE_SCAN_MAX_RESULTS];
+    size_t found = 0;
+    if (solua_should_cancel(NULL)) {
+        return solua_ble_check(L, SOLAR_OS_BLE_ERR_CANCELLED);
+    }
+    const esp_err_t err = solar_os_ble_scan(results, SOLAR_OS_BLE_SCAN_MAX_RESULTS, &found);
+    /* Discovery reports NOT_FOUND when no advertisement matched. */
+    if (err != ESP_ERR_NOT_FOUND || found != 0) {
+        solua_ble_check(L, err);
+    }
+    if (solua_should_cancel(NULL)) {
+        return solua_ble_check(L, SOLAR_OS_BLE_ERR_CANCELLED);
+    }
+    lua_newtable(L);
+    const int list = lua_gettop(L);
+    for (size_t i = 0; i < found && i < SOLAR_OS_BLE_SCAN_MAX_RESULTS; i++) {
+        const solar_os_ble_scan_result_t *device = &results[i];
+        char address[18];
+        snprintf(address, sizeof(address), "%02x:%02x:%02x:%02x:%02x:%02x",
+            device->bda[0], device->bda[1], device->bda[2],
+            device->bda[3], device->bda[4], device->bda[5]);
+        lua_createtable(L, 0, 9);
+        solua_set_str(L, -1, "address", address);
+        solua_set_str(L, -1, "name", device->name);
+        solua_set_int(L, -1, "addr_type", device->addr_type);
+        solua_set_int(L, -1, "rssi", device->rssi);
+        solua_set_int(L, -1, "appearance", device->appearance);
+        solua_set_bool(L, -1, "hid_service", device->hid_service);
+        solua_set_bool(L, -1, "keyboard_like", device->keyboard_like);
+        solua_set_bool(L, -1, "remembered", device->remembered);
+        solua_set_bool(L, -1, "connected", device->connected);
+        lua_rawseti(L, list, (lua_Integer)i + 1);
+    }
+    return 1;
+}
+
 static solar_os_ble_session_t solua_ble_get(lua_State *L)
 {
     if (solua_should_cancel(NULL)) {

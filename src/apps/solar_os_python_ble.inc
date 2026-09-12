@@ -12,6 +12,44 @@ static void python_ble_check(esp_err_t err)
     python_check_esp(err);
 }
 
+static mp_obj_t solaros_ble_scan(void)
+{
+    solar_os_ble_scan_result_t results[SOLAR_OS_BLE_SCAN_MAX_RESULTS];
+    size_t found = 0;
+    if (python_should_cancel(NULL)) {
+        python_ble_check(SOLAR_OS_BLE_ERR_CANCELLED);
+    }
+    const esp_err_t err = solar_os_ble_scan(results, SOLAR_OS_BLE_SCAN_MAX_RESULTS, &found);
+    /* Discovery reports NOT_FOUND when no advertisement matched. */
+    if (err != ESP_ERR_NOT_FOUND || found != 0) {
+        python_ble_check(err);
+    }
+    if (python_should_cancel(NULL)) {
+        python_ble_check(SOLAR_OS_BLE_ERR_CANCELLED);
+    }
+    mp_obj_t list = mp_obj_new_list(0, NULL);
+    for (size_t i = 0; i < found && i < SOLAR_OS_BLE_SCAN_MAX_RESULTS; i++) {
+        const solar_os_ble_scan_result_t *device = &results[i];
+        char address[18];
+        snprintf(address, sizeof(address), "%02x:%02x:%02x:%02x:%02x:%02x",
+            device->bda[0], device->bda[1], device->bda[2],
+            device->bda[3], device->bda[4], device->bda[5]);
+        mp_obj_t dict = mp_obj_new_dict(9);
+        python_dict_store_cstr(dict, "address", address);
+        python_dict_store_cstr(dict, "name", device->name);
+        python_dict_store_int(dict, "addr_type", device->addr_type);
+        python_dict_store_int(dict, "rssi", device->rssi);
+        python_dict_store_int(dict, "appearance", device->appearance);
+        python_dict_store_bool(dict, "hid_service", device->hid_service);
+        python_dict_store_bool(dict, "keyboard_like", device->keyboard_like);
+        python_dict_store_bool(dict, "remembered", device->remembered);
+        python_dict_store_bool(dict, "connected", device->connected);
+        mp_obj_list_append(list, dict);
+    }
+    return list;
+}
+MP_DEFINE_CONST_FUN_OBJ_0(solaros_ble_scan_obj, solaros_ble_scan);
+
 static solar_os_ble_session_t python_ble_get(void)
 {
     if (python_should_cancel(NULL)) {

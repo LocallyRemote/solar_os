@@ -89,12 +89,22 @@ esp_err_t solar_os_ble_backend_init(void)
     return initialized ? ESP_OK : ESP_FAIL;
 }
 
+static size_t scan_count = 1;
+static esp_err_t scan_error = ESP_OK;
 esp_err_t solar_os_ble_backend_scan(solar_os_ble_scan_result_t *results,
                                    size_t max_results, size_t *found)
 {
-    assert(max_results == 1);
+    assert(max_results >= 1);
+    if (scan_error != ESP_OK) return scan_error;
+    memset(results, 0, sizeof(*results));
     memcpy(results[0].bda, peer, sizeof(peer));
-    *found = 1;
+    strcpy(results[0].name, "Sensor");
+    results[0].addr_type = SOLAR_OS_BLE_ADDR_RANDOM;
+    results[0].rssi = -73;
+    results[0].appearance = 961;
+    results[0].hid_service = true;
+    results[0].remembered = true;
+    *found = scan_count;
     return ESP_OK;
 }
 
