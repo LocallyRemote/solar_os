@@ -213,6 +213,11 @@ flag (or None/nil when empty). No interpreter callback runs on the host task.
 
 ## Validation
 
+Runtime service registration uses a project-local, version-checked NimBLE SDK
+overlay. See [the overlay contract and tests](../patches/nimble/README.md).
+Dynamic registration is enabled; application server and advertising APIs remain
+separate work.
+
 Host-driven BLE scripts and Python source checks live in the sibling
 `solar_os_test` repository; see its `doc/ble.md` for the controlled BlueZ GATT
 peer, explicit notification/indication sends, and opt-in live delivery test.
