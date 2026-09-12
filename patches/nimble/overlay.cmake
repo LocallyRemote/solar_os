@@ -1,4 +1,12 @@
 # Called after project(): replace only this project's bt target sources.
+if(CONFIG_BT_ENABLED AND NOT CONFIG_BT_NIMBLE_ENABLED)
+    message(FATAL_ERROR
+        "SolarOS BLE requires NimBLE, but the active SDK configuration selects another host. "
+        "Back up and remove the generated sdkconfig.<environment> file, then rebuild "
+        "to regenerate it from sdkconfig.defaults*. Do not remove the defaults files. "
+        "Active SDKCONFIG: ${SDKCONFIG}")
+endif()
+
 if(CONFIG_BT_NIMBLE_ENABLED AND CONFIG_BT_NIMBLE_DYNAMIC_SERVICE)
     set(nimble_overlay "${CMAKE_BINARY_DIR}/solar_os_nimble")
     set(nimble_host "$ENV{IDF_PATH}/components/bt/host/nimble/nimble/nimble/host/src")

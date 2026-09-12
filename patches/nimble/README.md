@@ -11,6 +11,17 @@ The ESP-IDF 5.5.4 dynamic registration path requires additional failure handling
 The installed SDK is never edited. Unsupported source revisions fail configuration
 with a review-required error; do not bypass the hashes on an SDK update.
 
+## Stale build configuration
+
+Bluetooth-enabled builds require `CONFIG_BT_NIMBLE_ENABLED=y`. Configuration
+fails with an explicit error if the active SDK configuration selects another
+host. Existing generated `sdkconfig.<environment>` files take precedence over
+the checked-in defaults and can retain Bluedroid settings from an older build.
+Move the affected generated file to a backup location, then rebuild that
+environment to regenerate it. Preserve `sdkconfig.defaults` and
+`sdkconfig.defaults.*`; review any intentional local configuration overrides
+before reapplying them to the regenerated file.
+
 ## Registration guarantees
 
 - Registration holds the host lock on every mutation and balanced return path.
