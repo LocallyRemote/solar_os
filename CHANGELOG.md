@@ -2,6 +2,20 @@
 
 ## 4.x
 
+- **4.11.0** — 2026-09-12 — Replaced the Bluedroid BLE backend with
+  NimBLE, reducing internal RAM use while retaining BLE keyboard pairing,
+  reconnect, and sleep/wake support. Python and Lua applications can now
+  connect to multiple BLE GATT peers, discover services and characteristics,
+  read and write binary values, write without response, and receive
+  notifications and indications. MTU negotiation supports transfers larger
+  than 20 bytes. Applications can also define GATT services and
+  characteristics, advertise a peripheral, and send notifications or confirmed
+  indications through `solaros.ble.server`. Connections and server resources
+  are application-owned and cleaned up on exit, with connection capacity
+  reserved for the keyboard. Separate status-bar icons show Bluetooth
+  enabled/disabled/scanning state and keyboard availability. Launcher
+  scroll-only navigation now follows column-major order, and TCA8418 keyboards
+  support `Sym+Enter` for Escape.
 - **4.10.23** — 2026-09-11 — Added the configurable native graphical
   launcher. Launcher configurations now use readable Open Iconic names while
   retaining legacy numeric IDs, and Python/Lua graphics scripts can draw the
