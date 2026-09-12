@@ -461,6 +461,11 @@ label = "SDMMC card"
 category = "Expansion hardware"
 members = ["expansion_sdmmc"]
 
+[groups.gnss]
+label = "UART GNSS"
+category = "Expansion hardware"
+members = ["gnss_uart"]
+
 [groups.neopixel]
 label = "NeoPixel output"
 category = "Expansion hardware"
@@ -2067,3 +2072,14 @@ sources = [
 ]
 capabilities = ["psram"]
 any_capabilities = ["expansion_spi", "expansion_gpio", "expansion_uart"]
+
+[packages.gnss_uart]
+label = "expansion.gnss"
+expansion_drivers = ["solar_os_gnss_expansion_driver"]
+depends = ["service_expansion", "service_uart"]
+sources = [
+  "services/solar_os_gnss.c",
+  "services/solar_os_gnss_driver.c",
+]
+requires = []
+capabilities = ["expansion_uart"]

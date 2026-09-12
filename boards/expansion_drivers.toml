@@ -1020,3 +1020,16 @@ kind = "i2c_address"
 hint = "0x55"
 required = true
 allowed = [0x55]
+
+[drivers."uart-gnss"]
+summary = "UART GNSS module"
+package = "gnss_uart"
+targets = ["esp32", "esp32s3"]
+capabilities = ["expansion_uart"]
+default_name = "gnss0"
+
+[[drivers."uart-gnss".bindings]]
+key = "uart"
+kind = "uart_port"
+hint = "bus"
+required = true
