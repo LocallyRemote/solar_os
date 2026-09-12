@@ -54,6 +54,9 @@ void solar_os_ble_backend_resume(void);
  * RETIRED is a barrier: no further event for that epoch may be delivered.
  * A cancelled/timed-out request must never be relabelled with a new token. */
 esp_err_t solar_os_ble_backend_register(void);
+esp_err_t solar_os_ble_backend_server_request(solar_os_ble_session_t owner,
+                                             solar_os_ble_server_request_t *request);
+void solar_os_ble_backend_server_cancel(solar_os_ble_session_t owner); /* 0: all */
 size_t solar_os_ble_backend_capacity(void);
 void solar_os_ble_backend_reset(void);
 esp_err_t solar_os_ble_backend_connect(uint32_t epoch, uint32_t request,

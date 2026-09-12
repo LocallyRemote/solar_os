@@ -6,6 +6,8 @@
 #include "host/ble_store.h"
 #include "store/config/ble_store_config.h"
 #include "host/util/util.h"
+#include "services/gap/ble_svc_gap.h"
+#include "services/gatt/ble_svc_gatt.h"
 #include "esp_random.h"
 
 /* ESP-IDF exposes this initializer from ble_store_config.c, but not its header. */
@@ -1699,6 +1701,10 @@ esp_err_t solar_os_ble_backend_init(void)
     ble_hs_cfg.sm_our_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
     ble_hs_cfg.sm_their_key_dist = BLE_SM_PAIR_KEY_DIST_ENC | BLE_SM_PAIR_KEY_DIST_ID;
     ble_store_config_init();
+    /* Stable standard services support discovery caching / Service Changed
+     * for runtime application services. They do not start advertising. */
+    ble_svc_gap_init();
+    ble_svc_gatt_init();
     (void)ble_att_set_preferred_mtu(517);
     if (solar_os_task_create_pinned_internal(host_task, "nimble_host", 4096, NULL,
         configMAX_PRIORITIES - 4, &host_task_handle, 0, SOLAR_OS_TASK_ROLE_SYSTEM) != pdPASS) {

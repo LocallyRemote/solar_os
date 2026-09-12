@@ -11,6 +11,21 @@
 
 #define TEST_SESSION_COUNT 16
 size_t solar_os_ble_backend_capacity(void) { return 1; }
+static uint32_t fake_server_owner, fake_server_id;
+static solar_os_ble_server_request_t fake_server_request;
+esp_err_t solar_os_ble_backend_server_request(solar_os_ble_session_t owner, solar_os_ble_server_request_t *r)
+{
+    if (r->op == SOLAR_OS_BLE_SERVER_CREATE) fake_server_owner = owner;
+    if (owner != fake_server_owner) return ESP_ERR_INVALID_STATE;
+    fake_server_request = *r;
+    if (r->op == SOLAR_OS_BLE_SERVER_SERVICE || r->op == SOLAR_OS_BLE_SERVER_CHARACTERISTIC) r->id = ++fake_server_id;
+    if (r->op == SOLAR_OS_BLE_SERVER_STATUS) r->info.event_capacity = 16;
+    if (r->op == SOLAR_OS_BLE_SERVER_POLL || r->op == SOLAR_OS_BLE_SERVER_PEER) return ESP_ERR_NOT_FOUND;
+    if (r->op == SOLAR_OS_BLE_SERVER_CLOSE) fake_server_owner = 0;
+    return ESP_OK;
+}
+void solar_os_ble_backend_server_cancel(solar_os_ble_session_t owner)
+{ if (!owner || owner == fake_server_owner) fake_server_owner = 0; }
 
 static pthread_mutex_t fake_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t fake_changed = PTHREAD_COND_INITIALIZER;

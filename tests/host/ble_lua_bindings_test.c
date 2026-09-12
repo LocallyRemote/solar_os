@@ -55,6 +55,15 @@ static lua_State *new_vm(void)
     lua_newtable(L);
     luaL_setfuncs(L, methods, 0);
     lua_setglobal(L, "gatt");
+    const luaL_Reg server_methods[] = {
+        {"create", solua_ble_server_create}, {"service", solua_ble_server_service},
+        {"characteristic", solua_ble_server_characteristic}, {"start", solua_ble_server_start},
+        {"stop", solua_ble_server_stop}, {"close", solua_ble_server_close},
+        {"status", solua_ble_server_status}, {"poll", solua_ble_server_poll},
+        {"peers", solua_ble_server_peers}, {"set", solua_ble_server_set},
+        {"send", solua_ble_server_send}, {"disconnect", solua_ble_server_disconnect}, {NULL, NULL},
+    };
+    lua_newtable(L); luaL_setfuncs(L, server_methods, 0); lua_setglobal(L, "server");
     return L;
 }
 
@@ -181,6 +190,30 @@ int main(void)
     assert(pthread_join(stopper,NULL)==0);
     defer_subscription=false;
     solua_ble_destroy(); lua_close(L); retired(); stopped=false;
+    L = new_vm();
+    run(L, "server.create('Lua peripheral',16); svc=server.service('1234'); chr=server.characteristic(svc,'abcd',62,string.char(0,255,128))");
+    assert(fake_server_request.value_len==3 && fake_server_request.value[1]==255);
+    run(L, "server.start(); assert(server.status().event_capacity==16); assert(server.poll()==nil); assert(#server.peers()==0)");
+    run(L, "server.set(chr,string.char(0,255)); server.send(7,chr,string.char(128,0),true)");
+    assert(fake_server_request.indicate && fake_server_request.value_len==2 && fake_server_request.value[0]==128);
+    run(L, "assert(not pcall(server.create,'name',0)); assert(not pcall(server.service,'a'..string.char(0)..'b'))");
+    run(L, "assert(not pcall(server.characteristic,svc,'abcd',256)); assert(not pcall(server.set,0,'x'))");
+    run(L, "assert(not pcall(server.set,chr,string.rep('x',129))); assert(not pcall(server.send,7,chr,'x',1))");
+    run(L, "server.disconnect(7); server.stop(); server.close(); server.create('again')");
+    assert(fake_server_owner==solua_ble_session);
+    solar_os_ble_session_t outsider;
+    assert(solar_os_ble_session_create("outsider",&outsider)==ESP_OK);
+    solar_os_ble_server_request_t request={.op=SOLAR_OS_BLE_SERVER_STATUS};
+    assert(solar_os_ble_server_request(outsider,&request)==ESP_ERR_INVALID_STATE);
+    assert(solar_os_ble_session_close(outsider)==ESP_OK && fake_server_owner==solua_ble_session);
+    request.value_len=129;
+    assert(solar_os_ble_server_request(solua_ble_session,&request)==ESP_ERR_INVALID_ARG);
+    request.value_len=0; memset(request.text,'x',sizeof(request.text));
+    assert(solar_os_ble_server_request(solua_ble_session,&request)==ESP_ERR_INVALID_ARG);
+    solar_os_ble_session_t server_owner=solua_ble_session;
+    solua_ble_destroy(); assert(!fake_server_owner); lua_close(L);
+    request=(solar_os_ble_server_request_t){.op=SOLAR_OS_BLE_SERVER_STATUS};
+    assert(solar_os_ble_server_request(server_owner,&request)==ESP_ERR_INVALID_STATE);
     puts("Lua BLE bindings: real VM, binary I/O, validation, ownership and cleanup OK");
     return 0;
 }

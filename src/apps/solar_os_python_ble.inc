@@ -230,3 +230,147 @@ static mp_obj_t solaros_ble_gatt_poll(mp_obj_t peer_obj)
     return result;
 }
 MP_DEFINE_CONST_FUN_OBJ_1(solaros_ble_gatt_poll_obj, solaros_ble_gatt_poll);
+
+static void python_ble_server_text(mp_obj_t arg, solar_os_ble_server_request_t *r)
+{
+    size_t len;
+    const char *text = mp_obj_str_get_data(arg, &len);
+    if (!len || len >= sizeof(r->text) || memchr(text, 0, len))
+        mp_raise_ValueError(MP_ERROR_TEXT("invalid name or UUID"));
+    memcpy(r->text, text, len);
+}
+static uint32_t python_ble_server_id(mp_obj_t arg)
+{
+    uint32_t id = python_u32_from_obj(arg);
+    if (!id) mp_raise_ValueError(MP_ERROR_TEXT("invalid local BLE ID"));
+    return id;
+}
+static void python_ble_server_value(mp_obj_t arg, solar_os_ble_server_request_t *r)
+{
+    mp_buffer_info_t buffer;
+    mp_get_buffer_raise(arg, &buffer, MP_BUFFER_READ);
+    if (buffer.len > sizeof(r->value)) mp_raise_ValueError(MP_ERROR_TEXT("BLE value exceeds 128 bytes"));
+    r->value_len = buffer.len; memcpy(r->value, buffer.buf, buffer.len);
+}
+static mp_obj_t solaros_ble_server_create(size_t n_args, const mp_obj_t *args)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_CREATE};
+    python_ble_server_text(args[0], &r);
+    r.capacity = python_optional_u32(n_args, args, 1, 16);
+    if (!r.capacity) mp_raise_ValueError(MP_ERROR_TEXT("invalid queue capacity"));
+    python_ble_check(solar_os_ble_server_request(python_ble_get(), &r));
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(solaros_ble_server_create_obj, 1, 2, solaros_ble_server_create);
+static mp_obj_t solaros_ble_server_service(mp_obj_t uuid)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_SERVICE};
+    python_ble_server_text(uuid, &r);
+    python_ble_check(solar_os_ble_server_request(python_ble_get(), &r));
+    return mp_obj_new_int_from_uint(r.id);
+}
+MP_DEFINE_CONST_FUN_OBJ_1(solaros_ble_server_service_obj, solaros_ble_server_service);
+static mp_obj_t solaros_ble_server_characteristic(size_t n_args, const mp_obj_t *args)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_CHARACTERISTIC};
+    r.parent = python_ble_server_id(args[0]); python_ble_server_text(args[1], &r);
+    uint32_t properties = python_u32_from_obj(args[2]);
+    if (!properties || (properties & ~0x3eU)) mp_raise_ValueError(MP_ERROR_TEXT("invalid properties"));
+    r.properties = properties;
+    if (n_args > 3 && args[3] != mp_const_none) python_ble_server_value(args[3], &r);
+    python_ble_check(solar_os_ble_server_request(python_ble_get(), &r));
+    return mp_obj_new_int_from_uint(r.id);
+}
+MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(solaros_ble_server_characteristic_obj, 3, 4, solaros_ble_server_characteristic);
+#define PYTHON_BLE_SERVER_SIMPLE(name, operation) \
+    static mp_obj_t solaros_ble_server_##name(void) { \
+        solar_os_ble_server_request_t r = {.op=operation}; \
+        python_ble_check(solar_os_ble_server_request(python_ble_get(), &r)); \
+        return mp_const_none; \
+    } \
+    MP_DEFINE_CONST_FUN_OBJ_0(solaros_ble_server_##name##_obj, solaros_ble_server_##name);
+PYTHON_BLE_SERVER_SIMPLE(start, SOLAR_OS_BLE_SERVER_START)
+PYTHON_BLE_SERVER_SIMPLE(stop, SOLAR_OS_BLE_SERVER_STOP)
+PYTHON_BLE_SERVER_SIMPLE(close, SOLAR_OS_BLE_SERVER_CLOSE)
+#undef PYTHON_BLE_SERVER_SIMPLE
+static mp_obj_t solaros_ble_server_status(void)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_STATUS};
+    python_ble_check(solar_os_ble_server_request(python_ble_get(), &r));
+    mp_obj_t result = mp_obj_new_dict(9);
+    python_dict_store_bool(result, "registered", r.info.registered);
+    python_dict_store_bool(result, "advertising", r.info.advertising);
+    python_dict_store_bool(result, "closing", r.info.closing);
+    python_dict_store_uint(result, "peers", r.info.peers);
+    python_dict_store_uint(result, "services", r.info.services);
+    python_dict_store_uint(result, "characteristics", r.info.characteristics);
+    python_dict_store_uint(result, "event_capacity", r.info.event_capacity);
+    python_dict_store_uint(result, "event_count", r.info.event_count);
+    python_dict_store_uint(result, "events_dropped", r.info.events_dropped);
+    return result;
+}
+MP_DEFINE_CONST_FUN_OBJ_0(solaros_ble_server_status_obj, solaros_ble_server_status);
+static mp_obj_t solaros_ble_server_poll(void)
+{
+    static const char *types[] = {"connected", "disconnected", "read", "write", "subscribe", "sent"};
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_POLL};
+    esp_err_t err = solar_os_ble_server_request(python_ble_get(), &r);
+    if (err == ESP_ERR_NOT_FOUND) return mp_const_none;
+    python_ble_check(err);
+    mp_obj_t result = mp_obj_new_dict(8);
+    python_dict_store_cstr(result, "type", types[r.event.type]);
+    python_dict_store_uint(result, "peer", r.event.peer);
+    python_dict_store_uint(result, "characteristic", r.event.characteristic);
+    python_dict_store_uint(result, "mtu", r.event.mtu);
+    python_dict_store_uint(result, "status", r.event.status);
+    python_dict_store_bool(result, "notify", r.event.notify);
+    python_dict_store_bool(result, "indicate", r.event.indicate);
+    mp_obj_dict_store(result, mp_obj_new_str("data", 4), mp_obj_new_bytes(r.event.value, r.event.value_len));
+    return result;
+}
+MP_DEFINE_CONST_FUN_OBJ_0(solaros_ble_server_poll_obj, solaros_ble_server_poll);
+static mp_obj_t solaros_ble_server_peers(void)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_PEER};
+    mp_obj_t result = mp_obj_new_list(0, NULL);
+    for (;;) {
+        esp_err_t err = solar_os_ble_server_request(python_ble_get(), &r);
+        if (err == ESP_ERR_NOT_FOUND) return result;
+        python_ble_check(err); r.peer = r.event.peer;
+        mp_obj_t item = mp_obj_new_dict(3);
+        python_dict_store_uint(item, "peer", r.event.peer);
+        python_dict_store_uint(item, "mtu", r.event.mtu);
+        python_dict_store_bool(item, "connected", r.event.status == 0);
+        mp_obj_list_append(result, item);
+    }
+}
+MP_DEFINE_CONST_FUN_OBJ_0(solaros_ble_server_peers_obj, solaros_ble_server_peers);
+static mp_obj_t solaros_ble_server_set(mp_obj_t id, mp_obj_t data)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_SET, .id=python_ble_server_id(id)};
+    python_ble_server_value(data, &r);
+    python_ble_check(solar_os_ble_server_request(python_ble_get(), &r));
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_2(solaros_ble_server_set_obj, solaros_ble_server_set);
+static mp_obj_t solaros_ble_server_send(size_t n_args, const mp_obj_t *args)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_SEND};
+    r.peer = python_ble_server_id(args[0]); r.id = python_ble_server_id(args[1]);
+    python_ble_server_value(args[2], &r);
+    if (n_args > 3 && args[3] != mp_const_none) {
+        if (args[3] != mp_const_true && args[3] != mp_const_false)
+            mp_raise_ValueError(MP_ERROR_TEXT("indicate must be boolean"));
+        r.indicate = args[3] == mp_const_true;
+    }
+    python_ble_check(solar_os_ble_server_request(python_ble_get(), &r));
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(solaros_ble_server_send_obj, 3, 4, solaros_ble_server_send);
+static mp_obj_t solaros_ble_server_disconnect(mp_obj_t peer)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_DISCONNECT, .peer=python_ble_server_id(peer)};
+    python_ble_check(solar_os_ble_server_request(python_ble_get(), &r));
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_1(solaros_ble_server_disconnect_obj, solaros_ble_server_disconnect);

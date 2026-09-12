@@ -45,6 +45,10 @@ typedef struct ble_client {
     service_cache_t services[SOLAR_OS_BLE_GATT_MAX_SERVICES];
 } ble_client_t;
 static ble_client_t *clients;
+static size_t server_used_locked(void);
+static bool server_idle_locked(void);
+static void server_reset_locked(void);
+static void server_commands_locked(void);
 
 static ble_client_t *find_epoch(uint32_t epoch)
 {
@@ -136,6 +140,8 @@ static void clear_locked(ble_client_t *client)
     if (*entry) *entry = client->next;
     for (size_t i = 0; i < client->count; ++i) free(client->services[i].chars);
     free(client);
+    if (command_ready && !server_idle_locked())
+        ble_npl_eventq_put(nimble_port_get_dflt_eventq(), &command_event);
 }
 
 void solar_os_ble_backend_reset(void)
@@ -143,6 +149,7 @@ void solar_os_ble_backend_reset(void)
     if (!mutex) return;
     lock();
     while (clients) clear_locked(clients); /* Host is stopped; callbacks drained. */
+    server_reset_locked();
     unlock();
 }
 
@@ -150,7 +157,7 @@ bool solar_os_ble_nimble_client_idle(void)
 {
     if (!mutex) return true;
     lock();
-    bool idle = clients == NULL;
+    bool idle = clients == NULL && server_idle_locked();
     unlock();
     return idle;
 }
@@ -461,7 +468,7 @@ esp_err_t solar_os_ble_backend_connect(uint32_t epoch, uint32_t request,
                                        const uint8_t bda[6], uint8_t type)
 {
     lock();
-    size_t count = 0;
+    size_t count = server_used_locked();
     for (ble_client_t *c = clients; c; c = c->next) {
         ++count;
         if (c->epoch == epoch || (c->addr_type == type && !memcmp(c->bda, bda, 6))) {
@@ -706,6 +713,8 @@ static void command_client(ble_client_t *client)
 
 /* A single coalesced queue event drains only newly queued work, never resubmits
  * an in-flight ATT request when a different peer queues a command. */
+#include "solar_os_ble_nimble_server.inc"
+
 static void command_callback(struct ble_npl_event *event)
 {
     (void)event;
@@ -713,7 +722,7 @@ static void command_callback(struct ble_npl_event *event)
         lock();
         ble_client_t *client = clients;
         while (client && !client->queued) client = client->next;
-        if (!client) { unlock(); return; }
+        if (!client) { server_commands_locked(); unlock(); return; }
         client->queued = false;
         command_client(client); /* Releases mutex; may retire/free this entry. */
     }

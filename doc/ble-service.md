@@ -135,8 +135,8 @@ confirmation that the bond is absent.
 
 The firmware enables NimBLE central/observer roles plus peripheral/GATT-server
 support so incoming ATT requests, including MTU exchange, have server handlers.
-This does not start advertising or expose application-defined services; the
-application peripheral/server API remains a separate increment. Broadcaster
+This does not start advertising automatically. Application-owned services and
+connectable advertising are exposed under `solaros.ble.server`. Broadcaster
 support remains disabled. Existing local generated `sdkconfig.*` files must
 select `CONFIG_BT_NIMBLE_ENABLED=y`, `CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y`,
 and `CONFIG_BT_NIMBLE_GATT_SERVER=y`, and disable
@@ -175,7 +175,7 @@ and `CONFIG_BT_NIMBLE_GATT_SERVER=y`, and disable
   automatic cleanup of every peer before VM teardown. Cooperative checks use
   the existing stop/deadline signals. Legacy
   `solaros.ble.read()` still reads decoded keyboard input.
-  GATT servers and advertising are not exposed. Notifications and indications
+  Peripheral operations use `solaros.ble.server`. Notifications and indications
   use the per-peer polling interface described below.
 - `service.ble` selects the service, adapter, and keyboard profile under the
   existing package and board capability gates.
@@ -215,8 +215,8 @@ flag (or None/nil when empty). No interpreter callback runs on the host task.
 
 Runtime service registration uses a project-local, version-checked NimBLE SDK
 overlay. See [the overlay contract and tests](../patches/nimble/README.md).
-Dynamic registration is enabled; application server and advertising APIs remain
-separate work.
+Dynamic registration is enabled. The application server API is documented in
+[the server contract](ble-server.md).
 
 Host-driven BLE scripts and Python source checks live in the sibling
 `solar_os_test` repository; see its `doc/ble.md` for the controlled BlueZ GATT

@@ -1,8 +1,8 @@
 # Project-local NimBLE overlay
 
-SolarOS enables `CONFIG_BT_NIMBLE_DYNAMIC_SERVICE` so applications can eventually
+SolarOS enables `CONFIG_BT_NIMBLE_DYNAMIC_SERVICE` so applications can
 register GATT services without disconnecting keyboard or generic client links.
-Application-defined services and advertising are not exposed by the script API yet.
+The script contract is documented in [the application server API](../../doc/ble-server.md).
 
 The ESP-IDF 5.5.4 dynamic registration path requires additional failure handling.
 `scripts/patch_nimble.py` validates SHA-256 hashes of `ble_gatts.c` and
@@ -56,5 +56,4 @@ context configurations are compiled and tested. Python checks
 cover SDK drift rejection, output isolation and idempotent generation.
 
 Target validation remains necessary: keyboard typing, disconnect/reconnect and
-sleep/wake, then application server/client coexistence when the server API exists.
-The overlay is a prerequisite, not a claim that the Playground server API is done.
+sleep/wake, and application server/client coexistence.

@@ -221,3 +221,131 @@ static int solua_ble_gatt_poll(lua_State *L)
     lua_setfield(L, -2, "data");
     return 1;
 }
+
+static void solua_ble_server_text(lua_State *L, int index, solar_os_ble_server_request_t *r)
+{
+    size_t len;
+    luaL_checktype(L, index, LUA_TSTRING);
+    const char *text = luaL_checklstring(L, index, &len);
+    if (!len || len >= sizeof(r->text) || memchr(text, 0, len)) luaL_error(L, "invalid name or UUID");
+    memcpy(r->text, text, len);
+}
+static uint32_t solua_ble_server_id(lua_State *L, int index)
+{
+    lua_Integer value = luaL_checkinteger(L, index);
+    if (value <= 0 || (uint64_t)value > UINT32_MAX) luaL_error(L, "invalid local BLE ID");
+    return value;
+}
+static void solua_ble_server_value(lua_State *L, int index, solar_os_ble_server_request_t *r)
+{
+    size_t len;
+    luaL_checktype(L, index, LUA_TSTRING);
+    const char *value = luaL_checklstring(L, index, &len);
+    if (len > sizeof(r->value)) luaL_error(L, "BLE value exceeds 128 bytes");
+    r->value_len = len; memcpy(r->value, value, len);
+}
+static int solua_ble_server_create(lua_State *L)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_CREATE};
+    solua_ble_server_text(L, 1, &r);
+    lua_Integer capacity = luaL_optinteger(L, 2, 16);
+    if (capacity <= 0 || (uint64_t)capacity > UINT32_MAX) return luaL_error(L, "invalid queue capacity");
+    r.capacity = capacity;
+    return solua_ble_check(L, solar_os_ble_server_request(solua_ble_get(L), &r));
+}
+static int solua_ble_server_service(lua_State *L)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_SERVICE};
+    solua_ble_server_text(L, 1, &r);
+    solua_ble_check(L, solar_os_ble_server_request(solua_ble_get(L), &r));
+    lua_pushinteger(L, r.id); return 1;
+}
+static int solua_ble_server_characteristic(lua_State *L)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_CHARACTERISTIC};
+    r.parent = solua_ble_server_id(L, 1); solua_ble_server_text(L, 2, &r);
+    lua_Integer properties = luaL_checkinteger(L, 3);
+    if (properties < 1 || properties > 0x3e || (properties & ~0x3e)) return luaL_error(L, "invalid properties");
+    r.properties = properties;
+    if (!lua_isnoneornil(L, 4)) solua_ble_server_value(L, 4, &r);
+    solua_ble_check(L, solar_os_ble_server_request(solua_ble_get(L), &r));
+    lua_pushinteger(L, r.id); return 1;
+}
+#define SOLUA_BLE_SERVER_SIMPLE(name, operation) \
+    static int solua_ble_server_##name(lua_State *L) { \
+        solar_os_ble_server_request_t r = {.op=operation}; \
+        return solua_ble_check(L, solar_os_ble_server_request(solua_ble_get(L), &r)); \
+    }
+SOLUA_BLE_SERVER_SIMPLE(start, SOLAR_OS_BLE_SERVER_START)
+SOLUA_BLE_SERVER_SIMPLE(stop, SOLAR_OS_BLE_SERVER_STOP)
+SOLUA_BLE_SERVER_SIMPLE(close, SOLAR_OS_BLE_SERVER_CLOSE)
+#undef SOLUA_BLE_SERVER_SIMPLE
+static int solua_ble_server_status(lua_State *L)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_STATUS};
+    solua_ble_check(L, solar_os_ble_server_request(solua_ble_get(L), &r));
+    lua_createtable(L, 0, 9);
+    solua_set_bool(L, -1, "registered", r.info.registered);
+    solua_set_bool(L, -1, "advertising", r.info.advertising);
+    solua_set_bool(L, -1, "closing", r.info.closing);
+    solua_set_int(L, -1, "peers", r.info.peers);
+    solua_set_int(L, -1, "services", r.info.services);
+    solua_set_int(L, -1, "characteristics", r.info.characteristics);
+    solua_set_int(L, -1, "event_capacity", r.info.event_capacity);
+    solua_set_int(L, -1, "event_count", r.info.event_count);
+    solua_set_int(L, -1, "events_dropped", r.info.events_dropped);
+    return 1;
+}
+static int solua_ble_server_poll(lua_State *L)
+{
+    static const char *types[] = {"connected", "disconnected", "read", "write", "subscribe", "sent"};
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_POLL};
+    esp_err_t err = solar_os_ble_server_request(solua_ble_get(L), &r);
+    if (err == ESP_ERR_NOT_FOUND) { lua_pushnil(L); return 1; }
+    solua_ble_check(L, err);
+    lua_createtable(L, 0, 8);
+    solua_set_str(L, -1, "type", types[r.event.type]);
+    solua_set_int(L, -1, "peer", r.event.peer);
+    solua_set_int(L, -1, "characteristic", r.event.characteristic);
+    solua_set_int(L, -1, "mtu", r.event.mtu);
+    solua_set_int(L, -1, "status", r.event.status);
+    solua_set_bool(L, -1, "notify", r.event.notify);
+    solua_set_bool(L, -1, "indicate", r.event.indicate);
+    lua_pushlstring(L, (const char *)r.event.value, r.event.value_len); lua_setfield(L, -2, "data");
+    return 1;
+}
+static int solua_ble_server_peers(lua_State *L)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_PEER};
+    lua_newtable(L);
+    for (int i = 1;; i++) {
+        esp_err_t err = solar_os_ble_server_request(solua_ble_get(L), &r);
+        if (err == ESP_ERR_NOT_FOUND) return 1;
+        solua_ble_check(L, err);
+        r.peer = r.event.peer;
+        lua_createtable(L, 0, 3);
+        solua_set_int(L, -1, "peer", r.event.peer);
+        solua_set_int(L, -1, "mtu", r.event.mtu);
+        solua_set_bool(L, -1, "connected", r.event.status == 0);
+        lua_rawseti(L, -2, i);
+    }
+}
+static int solua_ble_server_set(lua_State *L)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_SET};
+    r.id = solua_ble_server_id(L, 1); solua_ble_server_value(L, 2, &r);
+    return solua_ble_check(L, solar_os_ble_server_request(solua_ble_get(L), &r));
+}
+static int solua_ble_server_send(lua_State *L)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_SEND};
+    r.peer = solua_ble_server_id(L, 1); r.id = solua_ble_server_id(L, 2);
+    solua_ble_server_value(L, 3, &r);
+    if (!lua_isnoneornil(L, 4)) { luaL_checktype(L, 4, LUA_TBOOLEAN); r.indicate = lua_toboolean(L, 4); }
+    return solua_ble_check(L, solar_os_ble_server_request(solua_ble_get(L), &r));
+}
+static int solua_ble_server_disconnect(lua_State *L)
+{
+    solar_os_ble_server_request_t r = {.op=SOLAR_OS_BLE_SERVER_DISCONNECT, .peer=solua_ble_server_id(L, 1)};
+    return solua_ble_check(L, solar_os_ble_server_request(solua_ble_get(L), &r));
+}

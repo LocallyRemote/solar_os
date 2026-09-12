@@ -6,23 +6,40 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
+#include <pthread.h>
+#include <time.h>
 
 struct nimble_test_state fake;
 static struct ble_npl_eventq eventq;
+static pthread_mutex_t event_lock = PTHREAD_MUTEX_INITIALIZER;
+static pthread_cond_t event_changed = PTHREAD_COND_INITIALIZER;
 void nimble_test_reset(void) { memset(&fake, 0, sizeof(fake)); fake.mtu = 517; }
 struct ble_npl_eventq *nimble_port_get_dflt_eventq(void) { return &eventq; }
 void ble_npl_event_init(struct ble_npl_event *e, void (*fn)(struct ble_npl_event *), void *arg)
 { *e = (struct ble_npl_event){.fn = fn, .arg = arg}; }
 void ble_npl_eventq_put(struct ble_npl_eventq *q, struct ble_npl_event *e)
-{ if (!e->queued) { assert(q->count < 32); q->items[q->count++] = e; e->queued = true; } }
+{
+    pthread_mutex_lock(&event_lock);
+    if (!e->queued) { assert(q->count < 32); q->items[q->count++] = e; e->queued = true; }
+    pthread_cond_broadcast(&event_changed); pthread_mutex_unlock(&event_lock);
+}
+void nimble_test_wait_event(void)
+{
+    struct timespec deadline; clock_gettime(CLOCK_REALTIME,&deadline); deadline.tv_sec+=2;
+    pthread_mutex_lock(&event_lock);
+    while (!eventq.count) assert(!pthread_cond_timedwait(&event_changed,&event_lock,&deadline));
+    pthread_mutex_unlock(&event_lock);
+}
 void nimble_test_drain(void)
 {
     unsigned budget = 100;
-    while (eventq.count) {
+    for (;;) {
+        pthread_mutex_lock(&event_lock);
+        if (!eventq.count) { pthread_mutex_unlock(&event_lock); break; }
         assert(budget--);
         struct ble_npl_event *e = eventq.items[0];
         memmove(eventq.items, eventq.items + 1, --eventq.count * sizeof(e));
-        e->queued = false; e->fn(e);
+        e->queued = false; pthread_mutex_unlock(&event_lock); e->fn(e);
     }
 }
 int ble_npl_callout_init(struct ble_npl_callout *c, struct ble_npl_eventq *q,
@@ -84,6 +101,68 @@ void nimble_test_disconnect(void)
 void nimble_test_value(int status, uint16_t handle, uint8_t *value, size_t len)
 { struct os_mbuf m={.len=len,.data=value}; struct ble_gatt_attr a={.handle=handle,.om=&m};
   struct ble_gatt_error err={.status=status}; fake.attr(7,&err,&a,fake.arg); }
+
+int ble_uuid_from_str(ble_uuid_any_t *uuid, const char *text)
+{
+    memset(uuid, 0, sizeof(*uuid));
+    if (strlen(text) == 4) { uuid->u.type = 16; uuid->u16.value = strtoul(text, NULL, 16); }
+    else if (strlen(text) == 8) { uuid->u.type = 32; uuid->u32.value = strtoul(text, NULL, 16); }
+    else { uuid->u.type = 128; memcpy(uuid->u128.value, text, 16); }
+    return 0;
+}
+int ble_uuid_cmp(const ble_uuid_t *a, const ble_uuid_t *b)
+{
+    if (a->type != b->type) return a->type - b->type;
+    if (a->type == 16) return BLE_UUID16(a)->value - BLE_UUID16(b)->value;
+    if (a->type == 32) return BLE_UUID32(a)->value != BLE_UUID32(b)->value;
+    return memcmp(((const ble_uuid128_t *)a)->value, ((const ble_uuid128_t *)b)->value, 16);
+}
+int ble_gap_adv_stop(void) { fake.advertising = false; return 0; }
+int ble_gap_adv_set_fields(const struct ble_hs_adv_fields *fields) { (void)fields; return fake.submit_error; }
+int ble_gap_adv_rsp_set_fields(const struct ble_hs_adv_fields *fields) { assert(fields->name_len <= 26); return fake.submit_error; }
+int ble_gap_adv_start(uint8_t own, const ble_addr_t *addr, int32_t ms,
+    const struct ble_gap_adv_params *params, ble_gap_event_fn *cb, void *arg)
+{
+    (void)own; (void)addr; (void)ms; (void)params;
+    fake.adv_calls++; fake.server_gap=cb; fake.server_gap_arg=arg;
+    fake.advertising = !fake.submit_error; return fake.submit_error;
+}
+int ble_gatts_add_dynamic_svcs(const struct ble_gatt_svc_def *definitions)
+{
+    fake.server_add_calls++;
+    if (fake.server_add_error) return fake.server_add_error;
+    fake.server_definitions = definitions;
+    uint16_t handle = 100;
+    for (const struct ble_gatt_svc_def *s = definitions; s->type; s++)
+        for (const struct ble_gatt_chr_def *c = s->characteristics; c && c->uuid; c++) {
+            *c->val_handle = handle; handle += 3;
+        }
+    return 0;
+}
+int ble_gatts_delete_svc(const ble_uuid_t *uuid)
+{ (void)uuid; fake.server_delete_calls++; return fake.server_delete_error; }
+int ble_gatts_find_svc(const ble_uuid_t *uuid, uint16_t *handle)
+{ (void)uuid; (void)handle; return BLE_HS_ENOENT; }
+struct os_mbuf *ble_hs_mbuf_from_flat(const void *data, uint16_t len)
+{
+    if (fake.mbuf_fail) return NULL;
+    struct os_mbuf *om = calloc(1, sizeof(*om)); assert(om);
+    om->data = malloc(len ? len : 1); assert(om->data); om->len = len; memcpy(om->data, data, len); return om;
+}
+int os_mbuf_append(struct os_mbuf *om, const void *data, uint16_t len)
+{
+    if (fake.mbuf_fail) return BLE_HS_ENOMEM;
+    om->data = realloc(om->data, om->len + len + 1); assert(om->data);
+    memcpy(om->data + om->len, data, len); om->len += len; return 0;
+}
+int ble_gatts_notify_custom(uint16_t conn, uint16_t handle, struct os_mbuf *om)
+{
+    (void)conn; fake.notify_calls++; fake.last_handle = handle;
+    assert(om->len <= sizeof(fake.written)); memcpy(fake.written, om->data, om->len); fake.written_len = om->len;
+    free(om->data); free(om); return fake.submit_error;
+}
+int ble_gatts_indicate_custom(uint16_t conn, uint16_t handle, struct os_mbuf *om)
+{ return ble_gatts_notify_custom(conn, handle, om); }
 
 struct test_queue { size_t count, cap, size; uint8_t data[]; };
 QueueHandle_t xQueueCreate(size_t n, size_t size)

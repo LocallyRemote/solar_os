@@ -228,6 +228,7 @@ esp_err_t solar_os_ble_prepare_sleep(uint32_t timeout_ms)
         lock_state();
     }
     unlock_state();
+    solar_os_ble_backend_server_cancel(0);
     const esp_err_t ret = solar_os_ble_backend_prepare_sleep(timeout_ms);
     lock_state();
     if (ret != ESP_OK && ret != ESP_ERR_NOT_FINISHED) sleeping = false;
@@ -368,6 +369,7 @@ static esp_err_t cancel_session(solar_os_ble_session_t id, bool close)
         lock_state();
     }
     unlock_state();
+    solar_os_ble_backend_server_cancel(id);
     unlock_dispatch();
     return ret;
 }
@@ -380,6 +382,28 @@ esp_err_t solar_os_ble_session_cancel(solar_os_ble_session_t session)
 esp_err_t solar_os_ble_session_close(solar_os_ble_session_t session)
 {
     return cancel_session(session, true);
+}
+
+esp_err_t solar_os_ble_server_request(solar_os_ble_session_t session,
+                                     solar_os_ble_server_request_t *request)
+{
+    if (!request || request->op < SOLAR_OS_BLE_SERVER_CREATE || request->op > SOLAR_OS_BLE_SERVER_PEER ||
+        request->value_len > SOLAR_OS_BLE_GATT_VALUE_MAX ||
+        !memchr(request->text, 0, sizeof(request->text))) return ESP_ERR_INVALID_ARG;
+    lock_dispatch();
+    lock_state();
+    ble_session_t *s = live_locked(session);
+    bool valid = s && !s->parent && !sleeping;
+    solar_os_ble_cancel_check_t check = valid ? s->cancel_check : NULL;
+    void *user = valid ? s->cancel_user : NULL;
+    unlock_state();
+    esp_err_t result = valid ? ESP_OK : ESP_ERR_INVALID_STATE;
+    if (result == ESP_OK && check && check(user)) result = SOLAR_OS_BLE_ERR_CANCELLED;
+    if (result == ESP_OK && request->op == SOLAR_OS_BLE_SERVER_CREATE)
+        result = solar_os_ble_backend_init();
+    if (result == ESP_OK) result = solar_os_ble_backend_server_request(session, request);
+    unlock_dispatch();
+    return result;
 }
 
 esp_err_t solar_os_ble_session_get_info(solar_os_ble_session_t session,

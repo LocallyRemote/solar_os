@@ -23,6 +23,50 @@
 
 typedef uint32_t solar_os_ble_session_t;
 typedef uint32_t solar_os_ble_peer_t;
+
+/* Application peripheral API. One owned legacy-advertising lease; incoming
+ * links share the stack/controller capacity with outgoing peers. Local IDs and
+ * peer IDs are opaque, not ATT handles. Reads use stored values, never callbacks.
+ * Requests copy all data; events contain no backend/interpreter pointers. */
+typedef enum {
+    SOLAR_OS_BLE_SERVER_CREATE, SOLAR_OS_BLE_SERVER_SERVICE,
+    SOLAR_OS_BLE_SERVER_CHARACTERISTIC, SOLAR_OS_BLE_SERVER_START,
+    SOLAR_OS_BLE_SERVER_STOP, SOLAR_OS_BLE_SERVER_CLOSE,
+    SOLAR_OS_BLE_SERVER_STATUS, SOLAR_OS_BLE_SERVER_POLL,
+    SOLAR_OS_BLE_SERVER_SET, SOLAR_OS_BLE_SERVER_SEND,
+    SOLAR_OS_BLE_SERVER_DISCONNECT, SOLAR_OS_BLE_SERVER_PEER,
+} solar_os_ble_server_operation_t;
+typedef enum {
+    SOLAR_OS_BLE_SERVER_CONNECTED, SOLAR_OS_BLE_SERVER_DISCONNECTED,
+    SOLAR_OS_BLE_SERVER_READ, SOLAR_OS_BLE_SERVER_WRITE,
+    SOLAR_OS_BLE_SERVER_SUBSCRIBE, SOLAR_OS_BLE_SERVER_SENT,
+} solar_os_ble_server_event_type_t;
+typedef struct {
+    solar_os_ble_server_event_type_t type;
+    uint32_t peer, characteristic;
+    uint16_t mtu, status;
+    bool notify, indicate;
+    size_t value_len;
+    uint8_t value[SOLAR_OS_BLE_GATT_VALUE_MAX];
+} solar_os_ble_server_event_t;
+typedef struct {
+    bool registered, advertising, closing;
+    size_t peers, services, characteristics, event_capacity, event_count;
+    uint32_t events_dropped;
+} solar_os_ble_server_info_t;
+typedef struct {
+    solar_os_ble_server_operation_t op;
+    uint32_t id, parent, peer;
+    uint8_t properties;
+    bool indicate;
+    char text[SOLAR_OS_BLE_GATT_UUID_MAX]; /* UUID, or CREATE name (1..26 bytes). */
+    size_t capacity, value_len;
+    uint8_t value[SOLAR_OS_BLE_GATT_VALUE_MAX];
+    solar_os_ble_server_info_t info;
+    solar_os_ble_server_event_t event;
+} solar_os_ble_server_request_t;
+esp_err_t solar_os_ble_server_request(solar_os_ble_session_t session,
+                                     solar_os_ble_server_request_t *request);
 typedef bool (*solar_os_ble_cancel_check_t)(void *user);
 
 typedef enum {
