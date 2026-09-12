@@ -8,7 +8,7 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 
 const solar_os_expansion_driver_t solar_os_drv2605_expansion_driver = {
     .name = "drv2605",
-    .category = SOLAR_OS_EXPANSION_CATEGORY_OTHER,
+    .category = SOLAR_OS_EXPANSION_CATEGORY_UTILITY,
     .summary = "DRV2605 haptic driver",
     .required_capabilities = SOLAR_OS_BOARD_CAP_I2C,
     .probe_supported = false,

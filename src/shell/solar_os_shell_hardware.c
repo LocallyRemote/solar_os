@@ -42,6 +42,9 @@
 #if SOLAR_OS_PACKAGE_GNSS_UART
 #include "solar_os_gnss.h"
 #endif
+#if SOLAR_OS_PACKAGE_TLORA_PAGER_CORE
+#include "solar_os_tlora_pager_core.h"
+#endif
 
 #define SOLAR_OS_SHELL_ARG_MAX 20
 #define I2C_READ_MAX_LEN 32
@@ -886,6 +889,38 @@ void solar_os_shell_cmd_gnss(solar_os_context_t *ctx, int argc, char **argv)
         return;
     }
 
+#if SOLAR_OS_PACKAGE_TLORA_PAGER_CORE
+    if (argc >= 2 && strcmp(argv[1], "power") == 0) {
+        if (argc == 2) {
+            solar_os_shell_io_printf(term, "GNSS power: %s\n",
+                                     solar_os_tlora_pager_core_get_gnss_power() ? "on" : "off");
+            return;
+        }
+        if (argc != 3) {
+            solar_os_shell_diag_unexpected(term, "gnss power", argv[3], "gnss power [on|off]");
+            return;
+        }
+        bool on;
+        if (strcmp(argv[2], "on") == 0) {
+            on = true;
+        } else if (strcmp(argv[2], "off") == 0) {
+            on = false;
+        } else {
+            solar_os_shell_diag_invalid(term, "gnss power", "state", argv[2],
+                                        "on or off", "gnss power [on|off]", false);
+            return;
+        }
+        const esp_err_t perr = solar_os_tlora_pager_core_set_gnss_power(on);
+        if (perr != ESP_OK) {
+            solar_os_shell_io_printf(term, "gnss power failed: %s\n",
+                                     solar_os_shell_error_text(perr));
+        } else {
+            solar_os_shell_io_printf(term, "GNSS power: %s\n", on ? "on" : "off");
+        }
+        return;
+    }
+#endif
+
     if (argc >= 2 && strcmp(argv[1], "write") == 0) {
         if (argc < 3) {
             solar_os_shell_io_writeln(term, "usage: gnss write <text>");
@@ -931,7 +966,7 @@ void solar_os_shell_cmd_gnss(solar_os_context_t *ctx, int argc, char **argv)
 
     if (argc < 2 || strcmp(argv[1], "nmea") != 0) {
         solar_os_shell_io_writeln(term,
-            "usage: gnss [status [ms]] | gnss nmea [ms] [hex] | gnss write <text> | gnss reset");
+            "usage: gnss [status [ms]] | gnss power [on|off] | gnss nmea [ms] [hex] | gnss write <text> | gnss reset");
         return;
     }
 

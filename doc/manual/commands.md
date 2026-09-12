@@ -932,6 +932,7 @@ available for the compiled board.
 | `uart` | `uart write [bus] <text>` | Write text through the default or selected named UART bus. |
 | `uart` | `uart read [bus] [ms]` | Read bytes from the default or selected named UART bus. |
 | `gnss` | `gnss [status [ms]]` | Parse a burst of NMEA and show fix quality, satellites used, and satellites in view. Default timeout 2000 ms. |
+| `gnss` | `gnss power [on\|off]` | Show or set GNSS module power state via the XL9555 GPS_EN rail. |
 | `gnss` | `gnss nmea [ms] [hex]` | Read raw bytes from the GNSS module; displays sanitized text or a hex dump. Default timeout 500 ms. |
 | `gnss` | `gnss write <text>` | Send text followed by CR+LF to the GNSS module UART TX. |
 | `gnss` | `gnss reset` | Send PMTK314 to the GNSS module to enable GGA and RMC NMEA output. |

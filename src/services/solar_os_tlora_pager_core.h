@@ -12,3 +12,7 @@ esp_err_t solar_os_tlora_pager_core_attach(const char *name,
                                            const solar_os_expansion_binding_t *bindings,
                                            size_t binding_count);
 esp_err_t solar_os_tlora_pager_core_detach(const char *name);
+
+/* Toggle individual power rails on the XL9555. */
+esp_err_t solar_os_tlora_pager_core_set_gnss_power(bool on);
+bool solar_os_tlora_pager_core_get_gnss_power(void);
