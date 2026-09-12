@@ -579,6 +579,11 @@ label = "BQ27220 fuel gauge"
 category = "Expansion hardware"
 members = ["bq27220"]
 
+[groups.drv2605]
+label = "DRV2605 haptic driver"
+category = "Expansion hardware"
+members = ["drv2605"]
+
 [packages.core_runtime]
 label = "bootstrap.runtime"
 depends = ["service_schedule", "service_streams"]
@@ -1295,6 +1300,18 @@ depends = ["service_battery", "service_expansion", "service_i2c"]
 sources = [
   "services/solar_os_bq27220.c",
   "services/solar_os_bq27220_driver.c",
+]
+requires = ["esp_driver_i2c"]
+capabilities = ["i2c"]
+
+[packages.drv2605]
+label = "expansion.drv2605"
+targets = ["esp32s3"]
+expansion_drivers = ["solar_os_drv2605_expansion_driver"]
+depends = ["service_expansion", "service_i2c"]
+sources = [
+  "services/solar_os_drv2605.c",
+  "services/solar_os_drv2605_driver.c",
 ]
 requires = ["esp_driver_i2c"]
 capabilities = ["i2c"]

@@ -188,6 +188,11 @@ name = "battery0"
 bindings = { i2c = "i2c0", addr = 0x55 }
 
 [[devices]]
+driver = "drv2605"
+name = "haptic0"
+bindings = { i2c = "i2c0", addr = 0x5A }
+
+[[devices]]
 driver = "sx1262"
 name = "radio0"
 bindings = { spi = "spi0", cs = 36, busy = 48, reset = 47, irq = 14 }

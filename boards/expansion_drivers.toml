@@ -1021,6 +1021,26 @@ hint = "0x55"
 required = true
 allowed = [0x55]
 
+[drivers.drv2605]
+summary = "DRV2605 haptic driver"
+package = "drv2605"
+targets = ["esp32s3"]
+capabilities = ["i2c"]
+default_name = "haptic0"
+
+[[drivers.drv2605.bindings]]
+key = "i2c"
+kind = "i2c_bus"
+hint = "bus"
+required = true
+
+[[drivers.drv2605.bindings]]
+key = "addr"
+kind = "i2c_address"
+hint = "0x5A"
+required = true
+allowed = [0x5A]
+
 [drivers."uart-gnss"]
 summary = "UART GNSS module"
 package = "gnss_uart"
