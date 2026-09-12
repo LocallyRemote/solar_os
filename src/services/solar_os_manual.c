@@ -611,10 +611,12 @@ static bool manual_reference_language_matches(
     const char *token)
 {
     if (strcmp(token, "python") == 0 || strcmp(token, "micropython") == 0) {
-        return strcmp(reference->page_id, "python") == 0;
+        return strcmp(reference->page_id, "python") == 0 ||
+               strncmp(reference->page_id, "python.", 7U) == 0;
     }
     if (strcmp(token, "lua") == 0) {
-        return strcmp(reference->page_id, "lua") == 0;
+        return strcmp(reference->page_id, "lua") == 0 ||
+               strncmp(reference->page_id, "lua.", 4U) == 0;
     }
     return false;
 }

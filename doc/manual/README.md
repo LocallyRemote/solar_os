@@ -41,11 +41,11 @@ This is the canonical documentation used by GitHub, the generated solar-os.eu we
 - [engine command](commands.md) — Print or reset generic engine utilization counters for CPU/SIMD-style backends and vector bulk operations.
 - [espnow command](commands.md) — Show ESP-NOW owner, channel, PHY, peers, traffic, drops, conflicts, and last error.
 - [exit command](commands.md) — Close the current UART, USB CDC, or telnet shell when another interactive shell remains.
-- [expansion command](expansion.md) — Show expansion capabilities, named buses and leases, connector resources, active devices, and resource claims.
+- [expansion command](expansion.md) — Open the expansion device manager. Browse attached devices and driver categories, inspect details, attach supported drivers, and detach runtime devices. Bus lifecycle remains in the io app.
 - [fg command](commands.md) — Resume a display session or a port-owned app on its owning terminal. Without an ID, restore the calling port shell's most recently suspended app.
 - [gateway command](commands.md) — Show gateway configuration, connection state, and traffic counters.
 - [gpio command](commands.md) — List board GPIOs with free, releasable, or fixed pin policy.
-- [help command](help.md) — Browse the package-aware manual or manage its signed exact-version SD copy.
+- [help command](help.md) — Browse the package-aware manual or manage its signed exact-version SD copy. command.status escapes the maintenance keyword.
 - [humidity command](commands.md) — Read the board humidity sensor when available.
 - [i2c command](commands.md) — Show every named I2C bus, or one selected bus.
 - [identity command](identity.md) — Show the configured user and hostname.
@@ -135,12 +135,12 @@ This is the canonical documentation used by GitHub, the generated solar-os.eu we
 - [inbox application](apps.md#inbox) — Universal incoming-message browser for pages, chat notifications, mail, and other background producers. It reads the same shared inbox that supplies the status-bar unread count. Messages and read state survive reboot in the bounded /.inbox/messages.bin store; the service retains at most 64 entries and keeps the file below 32 KB even when internal flash is the only storage.
 - [invaders application](apps.md#invaders) — Graphical arcade shooter.
 - [io application](apps.md#io) — Interactive expansion I/O manager. Its default Layout view presents the board's connectors in their physical arrangement, followed by the existing pin, named-bus, and resource-claim views. It uses the same ownership and validation services as the gpio, i2c, spi, uart, midi, onewire, and expansion commands.
-- [launcher application](apps.md#launcher) — Configurable native graphical launcher. An editable JSON file defines the grid dimensions and each item's name, Open Iconic ID, shell command, column, and row. It supports arrow-key and point-and-click navigation and returns from child applications to the grid.
+- [launcher application](apps.md#launcher) — Configurable native graphical launcher for display shells. It draws the configured grid, centers one icon in each occupied cell, and shows the selected icon larger with its title centered underneath. Arrow keys move between occupied cells, Enter opens the selection, and a pointer selects and opens items by point and click. Esc or the app-exit key returns to the shell.
 - [less application](apps.md#less) — Terminal pager for text files. It preserves original text layout and is useful for quick file inspection.
 - [logic application](apps.md#logic) — On-device logic analyzer waveform viewer. It displays the latest capture made by the shared logic analyzer service or the SUMP job. With pin arguments it makes a new local capture before opening the viewer.
 - [lua application](apps.md#lua) — Embedded Lua runtime. It can run an interactive REPL or execute .lua scripts from storage. Lua scripts can use SolarOS service bindings when the selected firmware includes the corresponding packages. Foreground scripts can consume touch coordinates, relative mouse motion, buttons, and joystick axes through solaros.input.
 - [Native SolarOS agent](agent.md) — Configure and use the resumable LLM agent and its typed tools
-- [notes application](apps.md#notes) — Markdown-backed checklist and category manager. It stores unchecked and checked items and supports one level of category folding. A bottom help bar shows the available controls on taller terminals; adaptive full-screen mode reclaims it on short displays while retaining active text input.
+- [notes application](apps.md#notes) — Markdown-backed checklist and category manager. It stores unchecked and checked items and supports one level of category folding. A persistent bottom help bar shows the available controls, with status or text input directly above it.
 - [player application](apps.md#player) — Interactive WAV/MP3 player and the user-facing counterpart to aplay. player keeps a persistent playlist under .player on the current storage root. Opening an audio file from Files adds it to that playlist, selects it, and starts playback. Missing files remain listed so removable media can be reattached.
 - [Playground](playground.md) — Browse, install, uninstall, and run community Python and Lua applications
 - [playground application](apps.md#playground) — Browse the configured community catalog as a foldable category tree, search applications, and install, update, uninstall, or run Python and Lua scripts.
@@ -206,13 +206,33 @@ This is the canonical documentation used by GitHub, the generated solar-os.eu we
 
 - [Compatibility I/O modules](compatibility.io.md) — Use the legacy single-bus I2C, SPI, UART, and OneWire APIs
 - [Digital signal processing](dsp.md) — Portable fixed-point DSP operations, streaming contexts, and script APIs
-- [Lua API reference](lua.md) — Complete Lua service API, conventions, and examples
+- [Lua API overview](lua.md) — Runtime basics, conventions, and service API topic index
+- [Lua apps, jobs, and identity API](lua.system.md) — Apps, jobs, and identity: identity, jobs, sessions, apps
+- [Lua audio and control API](lua.audio.md) — Audio and control: audio, synth, dsp, controls, parameters, midi, osc
+- [Lua bluetooth API](lua.ble.md) — Bluetooth: ble
+- [Lua buses and expansion API](lua.buses.md) — Buses and expansion: buses, expansion
+- [Lua contacts and messages API](lua.messaging.md) — Contacts and messages: contacts, messages
+- [Lua gpio and peripherals API](lua.hardware.md) — GPIO and peripherals: gpio, onewire, led, adc, pwm, i2c, spi, uart, neopixel, battery, sensors
 - [Lua graphics API](lua.gfx.md) — Draw through SolarOS displays from Lua
+- [Lua input and clipboard API](lua.input.md) — Input and clipboard: input, hid, clipboard
+- [Lua networking API](lua.network.md) — Networking: wifi, mqtt, http, net, ftp, ssh_keys
+- [Lua storage and files API](lua.storage.md) — Storage and files: storage
 - [Lua text user-interface API](lua.tui.md) — Build terminal applications from Lua
+- [Lua time and scheduling API](lua.time.md) — Time and scheduling: time, rtc, schedule
 - [Named runtime buses](buses.md) — Create and use resource-owned I2C, SPI, UART, MIDI, OneWire, and PS/2 buses
-- [Python API reference](python.md) — Complete MicroPython service API, conventions, and examples
+- [Python API overview](python.md) — Runtime basics, conventions, and service API topic index
+- [Python apps, jobs, and identity API](python.system.md) — Apps, jobs, and identity: identity, jobs, sessions, apps
+- [Python audio and control API](python.audio.md) — Audio and control: audio, synth, dsp, controls, parameters, midi, osc
+- [Python bluetooth API](python.ble.md) — Bluetooth: ble
+- [Python buses and expansion API](python.buses.md) — Buses and expansion: buses, expansion
+- [Python contacts and messages API](python.messaging.md) — Contacts and messages: contacts, messages
+- [Python gpio and peripherals API](python.hardware.md) — GPIO and peripherals: gpio, onewire, led, adc, pwm, i2c, spi, uart, neopixel, battery, sensors
 - [Python graphics API](python.gfx.md) — Draw through SolarOS displays from MicroPython
+- [Python input and clipboard API](python.input.md) — Input and clipboard: input, hid, clipboard
+- [Python networking API](python.network.md) — Networking: wifi, mqtt, http, net, ftp, ssh_keys
+- [Python storage and files API](python.storage.md) — Storage and files: storage
 - [Python text user-interface API](python.tui.md) — Build terminal applications from MicroPython
+- [Python time and scheduling API](python.time.md) — Time and scheduling: time, rtc, schedule
 
 ## System services
 
