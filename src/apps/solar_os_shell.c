@@ -1259,7 +1259,7 @@ static const char * const battery_subcommands[] = {
     "max_voltage",
 };
 
-static const char * const gnss_subcommands[] = {"nmea", "write", "reset"};
+static const char * const gnss_subcommands[] = {"status", "nmea", "write", "reset"};
 
 static const char * const battery_capacity_values[] = {"500", "1000", "2000", "3000"};
 static const char * const battery_min_voltage_values[] = {"3.0", "3.2", "3000", "3200"};

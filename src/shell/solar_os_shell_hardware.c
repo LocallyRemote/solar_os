@@ -725,6 +725,127 @@ static void battery_cmd_max_voltage(solar_os_shell_io_t *term, int argc, char **
 }
 
 #if SOLAR_OS_PACKAGE_GNSS_UART
+static int gnss_field(const char *sentence, int field, char *out, size_t out_len)
+{
+    int f = 0;
+    const char *p = sentence;
+    while (*p && *p != '*') {
+        if (f == field) {
+            size_t n = 0;
+            while (*p && *p != ',' && *p != '*' && n + 1 < out_len) {
+                out[n++] = *p++;
+            }
+            out[n] = '\0';
+            return (int)n;
+        }
+        if (*p == ',') {
+            f++;
+        }
+        p++;
+    }
+    if (out_len > 0) out[0] = '\0';
+    return 0;
+}
+
+static void gnss_print_status(solar_os_shell_io_t *term, uint32_t timeout_ms)
+{
+    uint8_t buf[512];
+    size_t n = 0;
+    const esp_err_t err = solar_os_gnss_read_raw(buf, sizeof(buf) - 1, timeout_ms, &n);
+    if (err == ESP_ERR_INVALID_STATE) {
+        solar_os_shell_io_writeln(term, "gnss: no GNSS device attached");
+        return;
+    }
+    if (err != ESP_OK) {
+        solar_os_shell_io_printf(term, "gnss status failed: %s\n", solar_os_shell_error_text(err));
+        return;
+    }
+    if (n == 0) {
+        solar_os_shell_io_writeln(term, "gnss: no data (module silent or not powered)");
+        return;
+    }
+    buf[n] = '\0';
+
+    /* parse one GNGGA sentence for fix quality and sats used */
+    int fix_quality = -1;
+    int sats_used = -1;
+    /* parse GSV sentences: sum sats-in-view per talker (one entry per GPGSV/GAGSV/etc.) */
+    int gsv_sats_view = 0;
+    bool gsv_seen = false;
+    /* track which talkers already contributed their in-view count */
+    char seen_talkers[8][3];
+    int seen_count = 0;
+
+    const char *line = (const char *)buf;
+    while (line && *line) {
+        const char *end = strchr(line, '\n');
+        char sentence[128];
+        size_t line_len = end ? (size_t)(end - line) : strlen(line);
+        if (line_len >= sizeof(sentence)) {
+            line_len = sizeof(sentence) - 1;
+        }
+        memcpy(sentence, line, line_len);
+        sentence[line_len] = '\0';
+        /* strip trailing \r */
+        if (line_len > 0 && sentence[line_len - 1] == '\r') {
+            sentence[--line_len] = '\0';
+        }
+
+        if (sentence[0] == '$') {
+            char talker[3] = {sentence[1], sentence[2], '\0'};
+            char type[4] = {sentence[3], sentence[4], sentence[5], '\0'};
+
+            if (strcmp(type, "GGA") == 0 && fix_quality < 0) {
+                char fq[4], sv[4];
+                gnss_field(sentence, 6, fq, sizeof(fq));
+                gnss_field(sentence, 7, sv, sizeof(sv));
+                if (fq[0] >= '0' && fq[0] <= '9') fix_quality = fq[0] - '0';
+                if (sv[0] >= '0' && sv[0] <= '9') sats_used = atoi(sv);
+            }
+
+            if (strcmp(type, "GSV") == 0) {
+                /* field 1 = total messages, field 2 = message number, field 3 = sats in view */
+                char msg_num[4], total_sv[4];
+                gnss_field(sentence, 2, msg_num, sizeof(msg_num));
+                gnss_field(sentence, 3, total_sv, sizeof(total_sv));
+                /* only count on first message of each talker to avoid double-counting */
+                if (strcmp(msg_num, "1") == 0 && total_sv[0] >= '0') {
+                    bool already = false;
+                    for (int i = 0; i < seen_count; i++) {
+                        if (strcmp(seen_talkers[i], talker) == 0) { already = true; break; }
+                    }
+                    if (!already && seen_count < 8) {
+                        memcpy(seen_talkers[seen_count++], talker, 3);
+                        gsv_sats_view += atoi(total_sv);
+                        gsv_seen = true;
+                    }
+                }
+            }
+        }
+
+        line = end ? end + 1 : NULL;
+    }
+
+    static const char * const fix_names[] = {
+        "none", "GPS", "DGPS", "PPS", "RTK fixed", "RTK float",
+        "estimated", "manual", "simulation",
+    };
+    const char *fix_name = (fix_quality >= 0 && fix_quality <= 8) ?
+        fix_names[fix_quality] : "unknown";
+
+    solar_os_shell_io_printf(term, "Fix: %s\n", fix_name);
+    if (sats_used >= 0) {
+        solar_os_shell_io_printf(term, "Satellites used: %d\n", sats_used);
+    } else {
+        solar_os_shell_io_writeln(term, "Satellites used: unknown");
+    }
+    if (gsv_seen) {
+        solar_os_shell_io_printf(term, "Satellites in view: %d\n", gsv_sats_view);
+    } else {
+        solar_os_shell_io_writeln(term, "Satellites in view: unknown");
+    }
+}
+
 static void gnss_print_nmea(solar_os_shell_io_t *term, const uint8_t *data, size_t len)
 {
     for (size_t i = 0; i < len; i++) {
@@ -745,6 +866,25 @@ static void gnss_print_nmea(solar_os_shell_io_t *term, const uint8_t *data, size
 void solar_os_shell_cmd_gnss(solar_os_context_t *ctx, int argc, char **argv)
 {
     solar_os_shell_io_t *term = terminal(ctx);
+
+    if (argc == 1 || strcmp(argv[1], "status") == 0) {
+        if (argc > 3) {
+            solar_os_shell_diag_unexpected(term, "gnss status", argv[3],
+                                           "gnss status [ms]");
+            return;
+        }
+        size_t timeout_ms = 2000;
+        if (argc == 3) {
+            if (!parse_size_arg(argv[2], 100, 10000, &timeout_ms)) {
+                solar_os_shell_diag_invalid(term, "gnss status", "ms", argv[2],
+                                            "an integer from 100 to 10000",
+                                            "gnss status [ms]", false);
+                return;
+            }
+        }
+        gnss_print_status(term, (uint32_t)timeout_ms);
+        return;
+    }
 
     if (argc >= 2 && strcmp(argv[1], "write") == 0) {
         if (argc < 3) {
@@ -791,7 +931,7 @@ void solar_os_shell_cmd_gnss(solar_os_context_t *ctx, int argc, char **argv)
 
     if (argc < 2 || strcmp(argv[1], "nmea") != 0) {
         solar_os_shell_io_writeln(term,
-            "usage: gnss nmea [ms] [hex] | gnss write <text> | gnss reset");
+            "usage: gnss [status [ms]] | gnss nmea [ms] [hex] | gnss write <text> | gnss reset");
         return;
     }
 
