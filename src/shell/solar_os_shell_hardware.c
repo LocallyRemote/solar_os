@@ -39,6 +39,9 @@
 #include "solar_os_terminal.h"
 #include "solar_os_time.h"
 #include "solar_os_uart.h"
+#if SOLAR_OS_PACKAGE_GNSS_UART
+#include "solar_os_gnss.h"
+#endif
 
 #define SOLAR_OS_SHELL_ARG_MAX 20
 #define I2C_READ_MAX_LEN 32
@@ -720,6 +723,140 @@ static void battery_cmd_max_voltage(solar_os_shell_io_t *term, int argc, char **
     const esp_err_t err = solar_os_battery_set_max_voltage_mv(voltage_mv);
     battery_print_config_result(term, "max_voltage", err);
 }
+
+#if SOLAR_OS_PACKAGE_GNSS_UART
+static void gnss_print_nmea(solar_os_shell_io_t *term, const uint8_t *data, size_t len)
+{
+    for (size_t i = 0; i < len; i++) {
+        const char c = (char)data[i];
+        if (c == '\r') {
+            continue;
+        } else if (c == '\n') {
+            solar_os_shell_io_put_char(term, '\n');
+        } else {
+            solar_os_shell_io_put_char(term, isprint((unsigned char)c) ? c : '.');
+        }
+    }
+    if (len > 0 && data[len - 1] != '\n') {
+        solar_os_shell_io_put_char(term, '\n');
+    }
+}
+
+void solar_os_shell_cmd_gnss(solar_os_context_t *ctx, int argc, char **argv)
+{
+    solar_os_shell_io_t *term = terminal(ctx);
+
+    if (argc >= 2 && strcmp(argv[1], "write") == 0) {
+        if (argc < 3) {
+            solar_os_shell_io_writeln(term, "usage: gnss write <text>");
+            return;
+        }
+        char buf[128];
+        size_t pos = 0;
+        for (int i = 2; i < argc && pos < sizeof(buf) - 3; i++) {
+            if (i > 2) buf[pos++] = ' ';
+            const size_t l = strlen(argv[i]);
+            const size_t copy = (pos + l >= sizeof(buf) - 3) ? sizeof(buf) - 3 - pos : l;
+            memcpy(buf + pos, argv[i], copy);
+            pos += copy;
+        }
+        buf[pos++] = '\r';
+        buf[pos++] = '\n';
+        size_t written = 0;
+        const esp_err_t werr = solar_os_gnss_write_raw((uint8_t *)buf, pos, &written);
+        if (werr != ESP_OK) {
+            solar_os_shell_io_printf(term, "gnss write failed: %s\n",
+                                     solar_os_shell_error_text(werr));
+        } else {
+            solar_os_shell_io_printf(term, "gnss write: %u bytes sent\n", (unsigned)written);
+        }
+        return;
+    }
+
+    if (argc == 2 && strcmp(argv[1], "reset") == 0) {
+        static const char pmtk[] =
+            "$PMTK314,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0*28\r\n";
+        size_t written = 0;
+        const esp_err_t werr = solar_os_gnss_write_raw(
+            (const uint8_t *)pmtk, strlen(pmtk), &written);
+        if (werr != ESP_OK) {
+            solar_os_shell_io_printf(term, "gnss reset failed: %s\n",
+                                     solar_os_shell_error_text(werr));
+        } else {
+            solar_os_shell_io_writeln(term,
+                "gnss reset: PMTK314 sent — run 'gnss nmea' in 1s to verify");
+        }
+        return;
+    }
+
+    if (argc < 2 || strcmp(argv[1], "nmea") != 0) {
+        solar_os_shell_io_writeln(term,
+            "usage: gnss nmea [ms] [hex] | gnss write <text> | gnss reset");
+        return;
+    }
+
+    size_t timeout_ms = 500;
+    if (argc == 3 && strcmp(argv[2], "hex") != 0) {
+        if (!parse_size_arg(argv[2], 100, 10000, &timeout_ms)) {
+            solar_os_shell_diag_invalid(term, "gnss nmea", "ms", argv[2],
+                                        "an integer from 100 to 10000",
+                                        "gnss nmea [ms] [hex]", false);
+            return;
+        }
+    } else if (argc == 4 && strcmp(argv[3], "hex") != 0) {
+        solar_os_shell_diag_unexpected(term, "gnss nmea", argv[3],
+                                        "gnss nmea [ms] [hex]");
+        return;
+    } else if (argc > 4) {
+        solar_os_shell_diag_unexpected(term, "gnss nmea", argv[4],
+                                        "gnss nmea [ms] [hex]");
+        return;
+    }
+
+    bool as_hex = (argc == 4 && strcmp(argv[3], "hex") == 0) ||
+                  (argc == 3 && strcmp(argv[2], "hex") == 0);
+
+    uint8_t buf[256];
+    size_t n = 0;
+    const esp_err_t err = solar_os_gnss_read_raw(buf, sizeof(buf) - 1,
+                                                  (uint32_t)timeout_ms, &n);
+    if (err == ESP_ERR_INVALID_STATE) {
+        solar_os_shell_io_writeln(term, "gnss: no GNSS device attached");
+        return;
+    }
+    if (err != ESP_OK) {
+        solar_os_shell_io_printf(term, "gnss nmea failed: %s\n",
+                                 solar_os_shell_error_text(err));
+        return;
+    }
+    if (n == 0) {
+        solar_os_shell_io_writeln(term, "gnss nmea: no data (module silent or not powered)");
+        return;
+    }
+    if (as_hex) {
+        solar_os_shell_io_printf(term, "gnss nmea: %u bytes\n", (unsigned)n);
+        for (size_t offset = 0; offset < n; offset += 16) {
+            const size_t line_len = n - offset > 16 ? 16 : n - offset;
+            solar_os_shell_io_printf(term, "%04x:", (unsigned)offset);
+            for (size_t i = 0; i < 16; i++) {
+                if (i < line_len) {
+                    solar_os_shell_io_printf(term, " %02x", buf[offset + i]);
+                } else {
+                    solar_os_shell_io_write(term, "   ");
+                }
+            }
+            solar_os_shell_io_write(term, "  ");
+            for (size_t i = 0; i < line_len; i++) {
+                const unsigned char ch = buf[offset + i];
+                solar_os_shell_io_put_char(term, isprint(ch) ? (char)ch : '.');
+            }
+            solar_os_shell_io_put_char(term, '\n');
+        }
+    } else {
+        gnss_print_nmea(term, buf, n);
+    }
+}
+#endif
 
 void solar_os_shell_cmd_battery(solar_os_context_t *ctx, int argc, char **argv)
 {

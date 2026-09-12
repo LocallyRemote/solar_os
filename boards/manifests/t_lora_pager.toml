@@ -132,7 +132,8 @@ tx = 43
 rx = 44
 baud_rate = "SOLAR_OS_BUS_UART_DEFAULT_BAUD_RATE"
 
-# Quectel L76K GNSS module: TX→GPIO12, RX→GPIO4, PPS→GPIO13 (power via XL9555 GPS_EN)
+# U-blox MIA-M10Q GNSS module: module TX→GPIO4 (ESP32 RX), module RX→GPIO12 (ESP32 TX), PPS→GPIO13 (power via XL9555 GPS_EN)
+# ESP32 TX=12 (sends to L76K RX), ESP32 RX=4 (receives from L76K TX)
 [[buses]]
 name = "uart1"
 protocol = "uart"
@@ -140,7 +141,7 @@ sharing = "exclusive"
 port = "UART_NUM_1"
 tx = 12
 rx = 4
-baud_rate = 9600
+baud_rate = 38400
 
 # core0 (XL9555) must attach before anything it power-gates: keyboard0,
 # radio0 and storage0 all sit behind its power/reset rails. It is marked

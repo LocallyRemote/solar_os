@@ -452,6 +452,9 @@ static const shell_command_t shell_builtin_commands[] = {
 #if SOLAR_OS_PACKAGE_SERVICE_BATTERY
     {"battery", "battery status and config", solar_os_shell_cmd_battery},
 #endif
+#if SOLAR_OS_PACKAGE_GNSS_UART
+    {"gnss", "read raw NMEA from GNSS module", solar_os_shell_cmd_gnss},
+#endif
 #if SOLAR_OS_PACKAGE_SERVICE_ADC
     {"adc", "read expansion analog inputs", solar_os_shell_cmd_adc},
 #endif
@@ -1255,6 +1258,8 @@ static const char * const battery_subcommands[] = {
     "min_voltage",
     "max_voltage",
 };
+
+static const char * const gnss_subcommands[] = {"nmea", "write", "reset"};
 
 static const char * const battery_capacity_values[] = {"500", "1000", "2000", "3000"};
 static const char * const battery_min_voltage_values[] = {"3.0", "3.2", "3000", "3200"};
@@ -2252,6 +2257,7 @@ static const char * const path_schedule_disable[] = {"schedule", "disable"};
 static const char * const path_schedule_remove[] = {"schedule", "remove"};
 static const char * const path_schedule_run[] = {"schedule", "run"};
 static const char * const path_schedule_stop[] = {"schedule", "stop"};
+static const char * const path_gnss[] = {"gnss"};
 static const char * const path_battery[] = {"battery"};
 static const char * const path_battery_capacity[] = {"battery", "capacity"};
 static const char * const path_battery_min_voltage[] = {"battery", "min_voltage"};
@@ -3169,6 +3175,7 @@ static const shell_completion_rule_t shell_completion_rules[] = {
     SHELL_COMPLETION_SCHEDULE_ENTRIES(path_schedule_remove),
     SHELL_COMPLETION_SCHEDULE_ENTRIES(path_schedule_run),
     SHELL_COMPLETION_SCHEDULE_ENTRIES(path_schedule_stop),
+    SHELL_COMPLETION_STATIC(path_gnss, gnss_subcommands),
     SHELL_COMPLETION_STATIC(path_battery, battery_subcommands),
     SHELL_COMPLETION_STATIC(path_battery_capacity, battery_capacity_values),
     SHELL_COMPLETION_STATIC(path_battery_min_voltage, battery_min_voltage_values),

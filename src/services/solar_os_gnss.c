@@ -4,14 +4,17 @@
 #include <stdbool.h>
 #include <string.h>
 
+#include "driver/uart.h"
 #include "esp_log.h"
 #include "solar_os_expansion.h"
 #include "solar_os_uart.h"
+#include "uart_port.h"
 
 typedef struct {
     bool active;
     char name[SOLAR_OS_EXPANSION_DEVICE_NAME_MAX];
     char uart_bus[SOLAR_OS_EXPANSION_TARGET_MAX];
+    uart_port_t port;
 } solar_os_gnss_device_t;
 
 static const char *TAG = "uart-gnss";
@@ -78,11 +81,29 @@ esp_err_t solar_os_gnss_attach(const char *name,
 
     memset(&gnss, 0, sizeof(gnss));
     gnss.active = true;
+    gnss.port   = (uart_port_t)port.port;
     strlcpy(gnss.name, name, sizeof(gnss.name));
     strlcpy(gnss.uart_bus, uart_bus, sizeof(gnss.uart_bus));
     ESP_LOGI(TAG, "%s attached on %s UART%d TX=%d RX=%d baud=%" PRIu32,
              name, uart_bus, port.port, port.tx_pin, port.rx_pin, port.baud_rate);
     return ESP_OK;
+}
+
+esp_err_t solar_os_gnss_read_raw(uint8_t *buf, size_t len,
+                                 uint32_t timeout_ms, size_t *read_len)
+{
+    if (!gnss.active || buf == NULL || len == 0) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return uart_port_read(gnss.port, buf, len, timeout_ms, read_len);
+}
+
+esp_err_t solar_os_gnss_write_raw(const uint8_t *buf, size_t len, size_t *written)
+{
+    if (!gnss.active || buf == NULL || len == 0) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    return uart_port_write(gnss.port, buf, len, written);
 }
 
 esp_err_t solar_os_gnss_detach(const char *name)
