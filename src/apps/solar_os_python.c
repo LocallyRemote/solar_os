@@ -5608,6 +5608,7 @@ static mp_obj_t solaros_ble_read(size_t n_args, const mp_obj_t *args)
     return mp_obj_new_bytes((const byte *)buffer, read_len);
 }
 MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(solaros_ble_read_obj, 0, 1, solaros_ble_read);
+#include "solar_os_python_ble.inc"
 #endif
 
 #if SOLAR_OS_PACKAGE_SERVICE_HID
@@ -7908,6 +7909,9 @@ esp_err_t solar_os_python_run(const solar_os_script_run_request_t *request,
 #if SOLAR_OS_PACKAGE_SERVICE_MIDI
     python_midi_destroy();
 #endif
+#if SOLAR_OS_PACKAGE_SERVICE_BLE
+    python_ble_destroy();
+#endif
 #if SOLAR_OS_PACKAGE_SERVICE_NET
     python_net_destroy();
 #endif
@@ -8111,6 +8115,9 @@ static void python_task(void *arg)
 #endif
 #if SOLAR_OS_PACKAGE_SERVICE_MIDI
         python_midi_destroy();
+#endif
+#if SOLAR_OS_PACKAGE_SERVICE_BLE
+        python_ble_destroy();
 #endif
 #if SOLAR_OS_PACKAGE_SERVICE_NET
         python_net_destroy();
@@ -8594,6 +8601,9 @@ static void python_stop(solar_os_context_t *ctx)
 #endif
 #if SOLAR_OS_PACKAGE_SERVICE_MIDI
     python_midi_destroy();
+#endif
+#if SOLAR_OS_PACKAGE_SERVICE_BLE
+    python_ble_destroy();
 #endif
 #if SOLAR_OS_PACKAGE_SERVICE_NET
     python_net_destroy();

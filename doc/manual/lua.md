@@ -79,7 +79,7 @@ service packages are not available on that board.
 - `solaros.uart`: `status`, `baud`, `is_valid_baud`, `mode`, `write`, `read` when UART support is compiled
 - `solaros.audio`: `status`, `deinit`, `off`, `set_volume`, `set_mic_gain`, `tone`, `tone_async`, `cancel`, `queue_status`, `level`, `capture`, `loopback`, `wav_info`, `record_wav`, `play_wav` when audio support is compiled. `capture(frames)` accepts 1 through 4096 frames and returns an interleaved little-endian signed-16 binary string plus a format table with `sample_format`, `sample_rate`, `channels`, and `bits_per_sample`.
 - `solaros.synth`: `status`, `configure`, `configure_oscillator2`, `configure_filter`, `configure_performance`, `note_on`, `note_off`, `all_notes_off`, `stop` when synth support is compiled. It provides eight native two-oscillator voices with polyphonic or monophonic last-note playback, portamento, per-note velocity, ADSR envelopes, and resonant low-pass filters; scripts retain the system's global speaker volume. Status includes DSP-derived `pcm_peak` and `pcm_rms` values for the captured scope block.
-- `solaros.ble`: `status`, `connected`, `pair`, `forget`, `layout`, `read` when BLE support is compiled
+- `solaros.ble`: keyboard `status`, `connected`, `pair`, `forget`, `layout`, `read`; generic client functions under `solaros.ble.gatt` and application peripheral functions under `solaros.ble.server` when BLE support is compiled
 - `solaros.clipboard`: `set`, `get`, `size`, `clear`
 - `solaros.identity`: `user`, `hostname`, `set_user`, `set_hostname`, `format`
 - `solaros.net`: `ping`, managed `tcp_connect`, `tcp_send`, `tcp_receive`, `udp_open`, `udp_send`, `udp_receive`, `websocket_connect`, `websocket_send`, `websocket_receive`, `close`, `close_all`, and `limits` when `network.base` is compiled
@@ -94,6 +94,81 @@ service packages are not available on that board.
 - `solaros.gfx`: foreground graphics drawing functions
 
 Lua strings are binary-safe, so byte-oriented APIs such as `uart.read`, `i2c.read_reg`, `clipboard.get`, and `mqtt.read().payload` return Lua strings.
+
+### Generic BLE GATT client
+
+`solaros.ble.gatt` mirrors the [Python GATT client](python.md#solarosblegatt):
+`capacity()`, `connect(address, addr_type, timeout_ms)`, `disconnect(peer)`,
+`status(peer)`, `services(peer)`, `characteristics(peer, service_index)`,
+`read(peer, handle, timeout_ms)`, and
+`write(peer, handle, data, with_response, timeout_ms)`,
+`subscribe(peer, handle, indicate, timeout_ms)`,
+`unsubscribe(peer, handle, timeout_ms)`, `configure_queue(peer, capacity)`, and
+`poll(peer)`. Connect returns an opaque
+peer handle; capacity reports the total configured generic-peer budget, not
+currently free slots. Optional trailing arguments
+may be omitted or `nil`; defaults are public address type, service-default
+timeout, and writes with response. Use dot calls, not colon method syntax.
+
+Lua data uses binary strings, including embedded zero bytes. Discovery results
+are one-based Lua arrays, but each service's `index` field is **zero-based**;
+pass that field to `characteristics()`. Status and discovery fields, service
+limits, timeouts, retirement, and reconnect rules match Python. Errors raise Lua
+errors; cancellation reports `BLE operation cancelled`.
+
+Subscribe discovers the CCCD and waits for its write acknowledgement. `indicate`
+defaults to `false` (notifications); use `true` for indications. `poll(peer)` is
+nonblocking and returns `nil` or `{handle=..., data=..., indication=...}`; `data`
+is a binary Lua string. No interpreter callback runs on the Bluetooth task.
+The per-peer queue defaults to 16 entries on first subscribe. Configure a positive
+capacity while connected, idle and with an empty queue. Failed allocation leaves
+the old queue intact. Full queues drop new events; values over 128 bytes are
+dropped whole. Status reports `event_capacity`, `event_count`, and the saturating
+`events_dropped` counter. Indication confirmation acknowledges protocol receipt,
+not app consumption. Disconnect, timeout, cancellation and sleep discard queued
+events; reconnect and subscribe again after resume. Successful unsubscribe
+discards queued events only for its characteristic. Other peers are unaffected.
+
+Lua owns a separate session, automatically closed on interpreter exit, errors,
+or stop, closing all its peers. Multiple peers can coexist within the configured
+host/controller capacity, with one connection reserved for the keyboard.
+Connect peers sequentially; their subsequent operations are independent.
+Capacity exhaustion reports `BLE connection capacity exhausted`, and allocation
+can fail without disturbing existing peers. A caught error or completion of one
+REPL command does not close the interpreter's session. Use `disconnect(peer)`
+when finished with a peer.
+
+`solaros.ble.server` mirrors the [application peripheral API](../ble-server.md):
+`create`, `service`, `characteristic`, `start`, `stop`, `close`, `status`, `peers`,
+`set`, `send`, `disconnect`, and `poll`. Values and event `data` use binary Lua
+strings; `poll()` returns `nil` when empty. Properties combine `solaros.ble.READ`,
+`WRITE`, `WRITE_NO_RESPONSE`, `NOTIFY`, and `INDICATE`. The server belongs to this
+runtime and is cleaned up alongside its outgoing peers on interpreter exit.
+
+```lua
+local gatt = solaros.ble.gatt
+local peer = gatt.connect("aa:bb:cc:dd:ee:ff", 1) -- replace address and type
+for _, service in ipairs(gatt.services(peer)) do
+    print(service.uuid, service.index)
+    for _, characteristic in ipairs(gatt.characteristics(peer, service.index)) do
+        print(characteristic.uuid, characteristic.handle)
+    end
+end
+-- Use a discovered handle: local data = gatt.read(peer, handle)
+-- Binary write: gatt.write(peer, handle, string.char(0, 255), true)
+gatt.disconnect(peer)
+```
+
+For an already connected `peer` and a discovered notification-capable `handle`:
+
+```lua
+gatt.configure_queue(peer, 32)
+gatt.subscribe(peer, handle) -- third argument true selects indications
+local event = gatt.poll(peer) -- call regularly from the application's loop
+if event then print(event.handle, event.data, event.indication) end
+print(gatt.status(peer).events_dropped)
+-- When finished: gatt.unsubscribe(peer, handle)
+```
 
 ### Generic pointer and axis input
 

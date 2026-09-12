@@ -7,3 +7,4 @@ idf_build_set_property(
     APPEND
 )
 project(solar_os)
+include(patches/nimble/overlay.cmake)

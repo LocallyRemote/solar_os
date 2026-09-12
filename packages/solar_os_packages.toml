@@ -912,6 +912,10 @@ sources = ["services/solar_os_text_search.c"]
 [packages.service_ble]
 label = "service.ble"
 sources = [
+  "services/solar_os_ble.c",
+  "services/solar_os_ble_nimble.c",
+  "services/solar_os_ble_hid.c",
+  "services/solar_os_ble_hid_report_map.c",
   "services/solar_os_ble_keyboard.c",
   "services/solar_os_ble_keyboard_scan_policy.c",
   "services/solar_os_hid_keyboard_report.c",

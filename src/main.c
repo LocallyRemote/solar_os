@@ -1442,7 +1442,9 @@ static void update_status(void)
 
 #if SOLAR_OS_PACKAGE_SERVICE_BLE
     if (board_has(SOLAR_OS_BOARD_CAP_BLE)) {
-        status.keyboard_scanning = solar_os_ble_keyboard_is_scanning();
+        status.bluetooth_supported = true;
+        status.bluetooth_enabled = solar_os_ble_keyboard_enabled_for_current_boot();
+        status.bluetooth_scanning = solar_os_ble_keyboard_is_scanning();
     }
 #endif
     const size_t keyboard_count = solar_os_input_keyboard_count();
