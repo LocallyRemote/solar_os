@@ -108,6 +108,22 @@ os.environ["SOLAR_OS_VGA_MODE"] = vga_mode
 
 acquire_project_build_lock(project_dir, env["PIOENV"])
 
+# PlatformIO hides successful CMake output, including the configuration guard's
+# notice. Announce the impending regeneration here as well for normal pio runs.
+sdkconfig_path = Path(os.path.expandvars(str(board_config.get(
+    "build.esp-idf.sdkconfig_path", project_dir / f"sdkconfig.{env['PIOENV']}"
+))))
+if not sdkconfig_path.is_absolute():
+    sdkconfig_path = project_dir / sdkconfig_path
+if sdkconfig_path.is_file():
+    sdkconfig_lines = sdkconfig_path.read_text(encoding="utf-8").splitlines()
+    if ("CONFIG_BT_ENABLED=y" in sdkconfig_lines
+            and "CONFIG_BT_NIMBLE_ENABLED=y" not in sdkconfig_lines):
+        print(
+            f"SolarOS BLE requires NimBLE; CMake will regenerate {sdkconfig_path} "
+            "from SDK configuration defaults without a backup"
+        )
+
 flavor_file = _selected_flavor_file(project_dir, flavor)
 # PlatformIO parses build.cmake_extra_args with Click's POSIX-style argument
 # splitter, including on Windows. Native Windows backslashes would therefore be

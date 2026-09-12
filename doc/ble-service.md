@@ -137,10 +137,12 @@ The firmware enables NimBLE central/observer roles plus peripheral/GATT-server
 support so incoming ATT requests, including MTU exchange, have server handlers.
 This does not start advertising automatically. Application-owned services and
 connectable advertising are exposed under `solaros.ble.server`. Broadcaster
-support remains disabled. Existing local generated `sdkconfig.*` files must
-select `CONFIG_BT_NIMBLE_ENABLED=y`, `CONFIG_BT_NIMBLE_ROLE_PERIPHERAL=y`,
-and `CONFIG_BT_NIMBLE_GATT_SERVER=y`, and disable
-`CONFIG_BT_BLUEDROID_ENABLED`; repository defaults select these for fresh builds.
+support remains disabled. Before ESP-IDF configuration, the build detects an
+active generated `sdkconfig` or `sdkconfig.*` with Bluetooth enabled and NimBLE
+disabled. It prints a notice, removes that file without a backup, and regenerates
+it from the selected SDK configuration defaults. This resets local menuconfig
+changes in that file. Defaults files are never removed. Repository defaults
+enable NimBLE, peripheral support, and the GATT server, and disable Bluedroid.
 
 ## Existing GATT limits
 
