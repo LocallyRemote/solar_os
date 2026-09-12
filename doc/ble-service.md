@@ -8,15 +8,24 @@ are confined to the backend.
 ## Ownership and lifetime
 
 `solar_os_ble_session_create(owner, &session)` allocates an opaque, nonzero
-session handle. The service supports four app sessions and a separate reserved
-`ble.shell` session used by the existing `solar_os_ble_gatt_*` API. Owner names
+session handle. Sessions and per-peer state are allocated dynamically. A separate
+`ble.shell` session serves the existing `solar_os_ble_gatt_*` API. Owner names
 are bounded diagnostic labels, not security credentials.
 
-All sessions share **one generic peer connection**. A session can connect only
-when that slot is free. Reads, writes, discovery queries, and cancellation
-require the owning session handle. The compatibility API cannot read or
-disconnect an app's connection. The OS keyboard retains its separate HID
-connection and existing pairing, bonding, and reconnect policy.
+An app session may own multiple peers. `solar_os_ble_peer_connect()` returns an
+opaque peer handle after connection and discovery complete. The `peer_*` data
+operations and disconnect require both the owning session and peer handles.
+Each peer has independent discovery, request, result, timeout and retirement
+state. A timeout or disconnect on one peer does not retire the others.
+The compatibility API cannot read or disconnect an app's connection. The OS
+keyboard retains its separate HID connection and pairing/reconnect policy.
+
+`solar_os_ble_peer_disconnect()` immediately invalidates the peer handle.
+Session close invalidates all its peer handles and closes their connections.
+Remote disconnect and sleep retain peer handles for status; release them with
+peer disconnect, then connect again to obtain a fresh handle and discovery.
+The older `session_*` data operations retain an implicit default connection for
+C callers and the shell. They do not select an arbitrary explicit peer.
 
 A caller keeps the handle for its lifetime and calls
 `solar_os_ble_session_close(session)` on every exit path, including errors.
@@ -26,8 +35,9 @@ session cannot transfer the old result to a new owner. Numeric handles and
 connection/request tokens never wrap within a boot; exhaustion fails closed.
 These are runtime handles, not persistent identifiers.
 
-`solar_os_ble_session_get_info()` reports the owner's connection snapshot, busy
-state, and retirement state. Each session permits one blocking operation.
+`solar_os_ble_peer_get_info()` reports a peer's connection snapshot, busy and
+retirement state; `session_get_info()` reports the legacy default connection.
+Each peer permits one blocking operation; different peers can operate concurrently.
 Other tasks may cancel or close that session while its caller waits.
 The service serializes lifecycle transitions and backend submission; metadata
 locks are released before backend calls. Blocking waits do not hold the
@@ -35,8 +45,8 @@ submission lock.
 
 ## Cancellation and timeouts
 
-`solar_os_ble_session_cancel()` keeps the session handle but aborts its
-connection and wakes a waiting caller with `SOLAR_OS_BLE_ERR_CANCELLED`.
+`solar_os_ble_session_cancel()` keeps session/peer handles but aborts all its
+connections and wakes waiting callers with `SOLAR_OS_BLE_ERR_CANCELLED`.
 Cancellation cannot undo a write already transmitted. Closing a session has
 the same cancellation behavior and also invalidates the handle.
 
@@ -71,7 +81,7 @@ The private `solar_os_ble_backend.h` interface carries connection lifetime
 type, connection ID, and characteristic handle before accepting a completion.
 It ignores events from cancelled or previous lifetimes.
 
-The NimBLE backend uses two links: the OS keyboard and one generic client.
+The NimBLE backend allocates a separate client entry per connection epoch.
 `solar_os_ble_nimble.c` owns generic discovery, UUID conversion, and request
 submission. Application tasks copy requests into adapter-owned storage and
 enqueue work on the NimBLE host queue. They do not enter the host while holding
@@ -134,6 +144,22 @@ and `CONFIG_BT_NIMBLE_GATT_SERVER=y`, and disable
 
 ## Existing GATT limits
 
+- There is no fixed SolarOS session or peer-count limit. Allocation can fail with
+  `ESP_ERR_NO_MEM`. `solar_os_ble_peer_capacity()` reports the total generic-peer
+  budget, not the number currently free. Exhausting it returns
+  `SOLAR_OS_BLE_ERR_CAPACITY` without disturbing existing connections.
+- Configure `CONFIG_BT_NIMBLE_MAX_CONNECTIONS` in the firmware's menuconfig.
+  Classic ESP32 also needs a matching `CONFIG_BTDM_CTRL_BLE_MAX_CONN`; ESP32-S3
+  uses `CONFIG_BT_CTRL_BLE_MAX_ACT`, which must leave room for scanning as well
+  as connections. SolarOS uses the smaller effective budget and reserves one
+  connection for the keyboard, even when it is absent. Defaults select three
+  host connections (keyboard plus two generic peers); this is not a policy cap.
+  Existing generated `sdkconfig.*` files must also be updated. Rebuild and flash
+  after changing capacity; it is not a runtime setting.
+- GAP connection establishment is serialized by the host. A concurrent connect
+  may fail with `ESP_ERR_INVALID_STATE`; existing links remain intact. Connect
+  peers sequentially, then operate on their independent connections.
+
 - Read/write buffers remain limited to 128 bytes. Discovery is bounded at 24
   services and 64 characteristics per service; exceeding a limit fails setup.
 - MTU exchange completes before service/characteristic discovery. Status reports
@@ -145,8 +171,9 @@ and `CONFIG_BT_NIMBLE_GATT_SERVER=y`, and disable
 - Characteristic handles are valid for the connection that discovered them.
   Apps must not retain them across reconnects.
 - Python/Lua expose synchronous client operations under `solaros.ble.gatt`,
-  with a lazily allocated runtime-owned session and automatic cleanup before VM
-  teardown. Cooperative checks use the existing stop/deadline signals. Legacy
+  with explicit peer handles, a lazily allocated runtime-owned session and
+  automatic cleanup of every peer before VM teardown. Cooperative checks use
+  the existing stop/deadline signals. Legacy
   `solaros.ble.read()` still reads decoded keyboard input. Public event queues,
   notifications, GATT servers, and advertising are not exposed.
 - `service.ble` selects the service, adapter, and keyboard profile under the
@@ -158,6 +185,8 @@ Build and run the host tests:
 
 ```sh
 make -C tests/host ble_service_test ble_nimble_test ble_hid_test ble_lua_bindings_test
+make -C tests/host ble_multi_peer_test
+tests/host/ble_multi_peer_test
 tests/host/ble_service_test
 tests/host/ble_nimble_test
 tests/host/ble_hid_test
@@ -185,3 +214,9 @@ a GATT timeout. Run discovery/read/write from both Python and Lua, stop a script
 during a pending operation, and confirm the shell can subsequently reconnect
 without rebooting. Host tests and successful builds do not establish those radio
 and lifecycle results or live heap use.
+
+Multi-peer hardware validation should keep the keyboard connected while one
+application reads two peripherals. Disconnect or time out either peripheral and
+confirm the other still works. Attempt a connection beyond configured capacity,
+check that existing links survive, and measure heap use before connection and
+after all peers are released. Repeat across script stop and sleep/wake.

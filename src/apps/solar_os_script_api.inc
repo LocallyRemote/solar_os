@@ -450,6 +450,7 @@ SOLAR_OS_SCRIPT_API_FUNCTION(ble, forget, forget);
 SOLAR_OS_SCRIPT_API_FUNCTION(ble, layout, layout);
 SOLAR_OS_SCRIPT_API_FUNCTION(ble, read, read);
 SOLAR_OS_SCRIPT_API_SUBMODULE_BEGIN(ble, gatt);
+SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, capacity, capacity);
 SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, connect, connect);
 SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, disconnect, disconnect);
 SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, status, status);

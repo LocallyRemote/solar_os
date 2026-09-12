@@ -48,7 +48,7 @@ static lua_State *new_vm(void)
         {"connect", solua_ble_gatt_connect}, {"disconnect", solua_ble_gatt_disconnect},
         {"status", solua_ble_gatt_status}, {"services", solua_ble_gatt_services},
         {"characteristics", solua_ble_gatt_characteristics}, {"read", solua_ble_gatt_read},
-        {"write", solua_ble_gatt_write}, {NULL, NULL},
+        {"capacity", solua_ble_gatt_capacity}, {"write", solua_ble_gatt_write}, {NULL, NULL},
     };
     lua_newtable(L);
     luaL_setfuncs(L, methods, 0);
@@ -77,52 +77,55 @@ int main(void)
     assert(ble_service_suite() == 0);
     lua_State *L = new_vm();
     run(L,
-        "gatt.disconnect(); "
+        "assert(not pcall(gatt.disconnect, 0)); "
         "assert(not pcall(gatt.connect, '01:02:03:04:05:06x', 1)); "
         "assert(not pcall(gatt.connect, '01:02:03:04:05:06' .. string.char(0), 1)); "
         "assert(not pcall(gatt.connect, '01:02:03:04:05:06', 4294967297)); "
         "assert(not pcall(gatt.connect, '01:02:03:04:05:06', 1, 4294967296)); "
-        "gatt.connect('01:02:03:04:05:06', 1); "
-        "local s = gatt.status(); "
+        "peer = gatt.connect('01:02:03:04:05:06', 1); "
+        "assert(type(peer) == 'number' and gatt.capacity() == 1); "
+        "assert(not pcall(gatt.status, 0)); "
+        "assert(not pcall(gatt.status, 4294967296)); "
+        "local s = gatt.status(peer); "
         "assert(s.connected and not s.retiring and s.mtu == 247); "
         "assert(s.owner == 'lua.app' and s.address == '01:02:03:04:05:06'); "
         "assert(s.addr_type == 1 and s.max_value_bytes == 128); "
-        "local services = gatt.services(); "
+        "local services = gatt.services(peer); "
         "assert(#services == 24 and services[1].index == 0); "
         "assert(services[1].uuid == '0x180f' and services[1].primary); "
-        "local chars = gatt.characteristics(services[1].index); "
+        "local chars = gatt.characteristics(peer, services[1].index); "
         "assert(#chars == 1 and chars[1].handle == 3 and chars[1].properties == 2); "
         "assert(chars[1].uuid == '0x2a19'); "
-        "assert(gatt.read(3) == string.rep('B', 128)); "
-        "gatt.write(3, string.char(0, 255)); "
-        "assert(not pcall(gatt.read, 0)); "
-        "assert(not pcall(gatt.read, 65536)); "
-        "assert(not pcall(gatt.read, -1)); "
-        "assert(not pcall(gatt.read, 3, -1)); "
-        "assert(not pcall(gatt.read, 3, 60001)); "
-        "assert(not pcall(gatt.characteristics, -1)); "
-        "assert(not pcall(gatt.characteristics, 4294967296)); "
-        "assert(not pcall(gatt.write, 3, 123)); "
-        "assert(not pcall(gatt.write, 3, '')); "
-        "assert(not pcall(gatt.write, 3, string.rep('x', 129))); "
-        "assert(not pcall(gatt.write, 3, 'xx', 0));");
+        "assert(gatt.read(peer, 3) == string.rep('B', 128)); "
+        "gatt.write(peer, 3, string.char(0, 255)); "
+        "assert(not pcall(gatt.read, peer, 0)); "
+        "assert(not pcall(gatt.read, peer, 65536)); "
+        "assert(not pcall(gatt.read, peer, -1)); "
+        "assert(not pcall(gatt.read, peer, 3, -1)); "
+        "assert(not pcall(gatt.read, peer, 3, 60001)); "
+        "assert(not pcall(gatt.characteristics, peer, -1)); "
+        "assert(not pcall(gatt.characteristics, peer, 4294967296)); "
+        "assert(not pcall(gatt.write, peer, 3, 123)); "
+        "assert(not pcall(gatt.write, peer, 3, '')); "
+        "assert(not pcall(gatt.write, peer, 3, string.rep('x', 129))); "
+        "assert(not pcall(gatt.write, peer, 3, 'xx', 0));");
     assert(write_response);
-    run(L, "gatt.write(3, string.char(0, 255), false)");
+    run(L, "gatt.write(peer, 3, string.char(0, 255), false)");
     assert(!write_response);
     uint8_t value[2];
     size_t len;
     assert(solar_os_ble_gatt_read(3, value, sizeof(value), &len, 10) == ESP_ERR_INVALID_STATE);
     assert(solar_os_ble_gatt_disconnect() == ESP_OK);
-    run(L, "assert(gatt.status().connected)");
+    run(L, "assert(gatt.status(peer).connected)");
     /* Stop interrupts a blocking native call, then blocks new work. */
     defer_read = true;
     const unsigned after = submission_count();
     pthread_t stopper;
     assert(pthread_create(&stopper, NULL, stop_waiting_vm, (void *)&after) == 0);
-    run(L, "local ok, err = pcall(gatt.read, 3); assert(not ok and string.find(err, 'cancelled'))");
+    run(L, "local ok, err = pcall(gatt.read, peer, 3); assert(not ok and string.find(err, 'cancelled'))");
     assert(pthread_join(stopper, NULL) == 0);
     defer_read = false;
-    run(L, "local ok, err = pcall(gatt.read, 3); assert(not ok and string.find(err, 'cancelled'))");
+    run(L, "local ok, err = pcall(gatt.read, peer, 3); assert(not ok and string.find(err, 'cancelled'))");
     const solar_os_ble_session_t old = solua_ble_session;
     solua_ble_destroy();
     solua_ble_destroy();
@@ -134,7 +137,7 @@ int main(void)
 
     /* A new VM owns a new session; an uncaught exception can be cleaned up. */
     L = new_vm();
-    run(L, "gatt.connect('01:02:03:04:05:06', 1)");
+    run(L, "peer = gatt.connect('01:02:03:04:05:06', 1)");
     assert(solua_ble_session != old);
     assert(luaL_dostring(L, "error('intentional')") != LUA_OK);
     solua_ble_destroy();
@@ -144,7 +147,7 @@ int main(void)
 
     /* A different owner cannot read or cancel the shell peer. */
     L = new_vm();
-    run(L, "assert(not pcall(gatt.read, 3)); gatt.disconnect()");
+    run(L, "assert(not pcall(gatt.read, peer, 3)); assert(not pcall(gatt.disconnect, 0))");
     solua_ble_destroy();
     lua_close(L);
     assert(solar_os_ble_gatt_read(3, value, sizeof(value), &len, 100) == ESP_OK);

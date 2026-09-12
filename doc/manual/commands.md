@@ -772,12 +772,13 @@ ble gatt write <handle> <hex...>
 ble gatt write-nr <handle> <hex...>
 ```
 
-The shell GATT session shares one generic peer slot with native app BLE
-sessions. It cannot read or disconnect an app-owned connection. Disconnect and
+The shell GATT session owns one peer and shares the configured connection budget
+with app BLE sessions, which may own multiple peers. It cannot read or disconnect
+an app-owned connection. Disconnect and
 operation timeout retire the connection asynchronously; reconnect can report
 busy until cleanup finishes. A write without response waits for local stack
 completion, not a remote acknowledgement. Generic scans are unavailable while
-the generic peer slot is active or retiring.
+any generic peer is active or retiring.
 
 MQTT usage:
 

@@ -10,9 +10,13 @@ MANUAL_GENERATED_HEADER := $(MANUAL_GENERATED_DIR)/solar_os_manual_data.h
 
 .PHONY: all test clean
 
-TARGETS += ble_service_test ble_nimble_test ble_hid_test ble_lua_bindings_test
+TARGETS += ble_service_test ble_multi_peer_test ble_nimble_test ble_hid_test ble_lua_bindings_test
 
 all: $(TARGETS)
+
+ble_multi_peer_test: ble_multi_peer_test.c ble_test_support.c $(ROOT)/src/services/solar_os_ble.c $(ROOT)/src/services/solar_os_ble.h
+	$(CC) $(CFLAGS) -D_POSIX_C_SOURCE=200809L -pthread -include compat.h -Ible_stubs -I. -I$(ROOT)/src/services \
+		ble_multi_peer_test.c ble_test_support.c -o $@
 
 ble_nimble_test ble_hid_test: %: %.c nimble_test_support.c ble_test_support.c \
 		$(ROOT)/src/services/solar_os_ble_nimble.c $(ROOT)/src/services/solar_os_ble_hid.c \
@@ -360,6 +364,7 @@ rtc_pcf85063_test: rtc_pcf85063_test.c \
 
 test: $(TARGETS)
 	./ble_service_test
+	./ble_multi_peer_test
 	./ble_nimble_test
 	./ble_hid_test
 	./ble_lua_bindings_test

@@ -21,5 +21,6 @@ int xSemaphoreTake(SemaphoreHandle_t semaphore, unsigned timeout);
 int xSemaphoreGive(SemaphoreHandle_t semaphore);
 SemaphoreHandle_t xSemaphoreCreateRecursiveMutexStatic(StaticSemaphore_t *storage);
 SemaphoreHandle_t xSemaphoreCreateBinary(void);
+void vSemaphoreDelete(SemaphoreHandle_t semaphore);
 #define xSemaphoreTakeRecursive xSemaphoreTake
 #define xSemaphoreGiveRecursive xSemaphoreGive

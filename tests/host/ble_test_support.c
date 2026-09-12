@@ -6,6 +6,12 @@
 #include <freertos/semphr.h>
 #include "esp_err.h"
 
+void vSemaphoreDelete(SemaphoreHandle_t sem)
+{
+    assert(pthread_cond_destroy(&sem->changed) == 0);
+    assert(pthread_mutex_destroy(&sem->lock) == 0);
+}
+
 TickType_t xTaskGetTickCount(void)
 {
     struct timespec now;

@@ -6,6 +6,7 @@ static int solua_ble_check(lua_State *L, esp_err_t err)
     if (err == SOLAR_OS_BLE_ERR_CANCELLED) {
         return luaL_error(L, "BLE operation cancelled");
     }
+    if (err == SOLAR_OS_BLE_ERR_CAPACITY) return luaL_error(L, "BLE connection capacity exhausted");
     return solua_check_esp(L, err);
 }
 
@@ -49,6 +50,13 @@ static uint16_t solua_ble_handle(lua_State *L, int index)
     return (uint16_t)handle;
 }
 
+static solar_os_ble_peer_t solua_ble_peer(lua_State *L)
+{
+    const lua_Integer peer = luaL_checkinteger(L, 1);
+    if (peer <= 0 || (uint64_t)peer > UINT32_MAX) luaL_error(L, "invalid BLE peer handle");
+    return (solar_os_ble_peer_t)peer;
+}
+
 static int solua_ble_gatt_connect(lua_State *L)
 {
     size_t len;
@@ -63,21 +71,27 @@ static int solua_ble_gatt_connect(lua_State *L)
         return luaL_error(L, "address type must be 0..3");
     }
     const uint32_t timeout = solua_ble_timeout(L, 3);
-    return solua_ble_check(L, solar_os_ble_session_connect(solua_ble_get(L), bda, type, timeout));
+    solar_os_ble_peer_t peer;
+    solua_ble_check(L, solar_os_ble_peer_connect(solua_ble_get(L), bda, type, timeout, &peer));
+    lua_pushinteger(L, peer);
+    return 1;
 }
 
 static int solua_ble_gatt_disconnect(lua_State *L)
 {
-    if (solua_ble_session != SOLAR_OS_BLE_SESSION_INVALID) {
-        return solua_ble_check(L, solar_os_ble_session_cancel(solua_ble_session));
-    }
-    return 0;
+    return solua_ble_check(L, solar_os_ble_peer_disconnect(solua_ble_get(L), solua_ble_peer(L)));
+}
+
+static int solua_ble_gatt_capacity(lua_State *L)
+{
+    lua_pushinteger(L, solar_os_ble_peer_capacity());
+    return 1;
 }
 
 static int solua_ble_gatt_status(lua_State *L)
 {
     solar_os_ble_session_info_t info;
-    solua_ble_check(L, solar_os_ble_session_get_info(solua_ble_get(L), &info));
+    solua_ble_check(L, solar_os_ble_peer_get_info(solua_ble_get(L), solua_ble_peer(L), &info));
     char address[18];
     snprintf(address, sizeof(address), "%02x:%02x:%02x:%02x:%02x:%02x",
         info.gatt.bda[0], info.gatt.bda[1], info.gatt.bda[2],
@@ -100,7 +114,7 @@ static int solua_ble_gatt_services(lua_State *L)
 {
     solar_os_ble_gatt_service_t services[SOLAR_OS_BLE_GATT_MAX_SERVICES];
     size_t count = 0;
-    solua_ble_check(L, solar_os_ble_session_services(solua_ble_get(L), services,
+    solua_ble_check(L, solar_os_ble_peer_services(solua_ble_get(L), solua_ble_peer(L), services,
         SOLAR_OS_BLE_GATT_MAX_SERVICES, &count));
     lua_createtable(L, count, 0);
     for (size_t i = 0; i < count && i < SOLAR_OS_BLE_GATT_MAX_SERVICES; i++) {
@@ -117,13 +131,13 @@ static int solua_ble_gatt_services(lua_State *L)
 
 static int solua_ble_gatt_characteristics(lua_State *L)
 {
-    const lua_Integer index = luaL_checkinteger(L, 1);
+    const lua_Integer index = luaL_checkinteger(L, 2);
     if (index < 0 || index >= SOLAR_OS_BLE_GATT_MAX_SERVICES) {
         return luaL_error(L, "service index out of range");
     }
     solar_os_ble_gatt_characteristic_t chars[SOLAR_OS_BLE_GATT_MAX_CHARACTERISTICS];
     size_t count = 0;
-    solua_ble_check(L, solar_os_ble_session_characteristics(solua_ble_get(L), index,
+    solua_ble_check(L, solar_os_ble_peer_characteristics(solua_ble_get(L), solua_ble_peer(L), index,
         chars, SOLAR_OS_BLE_GATT_MAX_CHARACTERISTICS, &count));
     lua_createtable(L, count, 0);
     for (size_t i = 0; i < count && i < SOLAR_OS_BLE_GATT_MAX_CHARACTERISTICS; i++) {
@@ -138,11 +152,11 @@ static int solua_ble_gatt_characteristics(lua_State *L)
 
 static int solua_ble_gatt_read(lua_State *L)
 {
-    const uint16_t handle = solua_ble_handle(L, 1);
-    const uint32_t timeout = solua_ble_timeout(L, 2);
+    const uint16_t handle = solua_ble_handle(L, 2);
+    const uint32_t timeout = solua_ble_timeout(L, 3);
     uint8_t value[SOLAR_OS_BLE_GATT_VALUE_MAX];
     size_t len = 0;
-    solua_ble_check(L, solar_os_ble_session_read(solua_ble_get(L), handle,
+    solua_ble_check(L, solar_os_ble_peer_read(solua_ble_get(L), solua_ble_peer(L), handle,
         value, sizeof(value), &len, timeout));
     lua_pushlstring(L, (const char *)value, len);
     return 1;
@@ -150,16 +164,16 @@ static int solua_ble_gatt_read(lua_State *L)
 
 static int solua_ble_gatt_write(lua_State *L)
 {
-    const uint16_t handle = solua_ble_handle(L, 1);
+    const uint16_t handle = solua_ble_handle(L, 2);
     size_t len;
-    luaL_checktype(L, 2, LUA_TSTRING);
-    const char *value = luaL_checklstring(L, 2, &len);
+    luaL_checktype(L, 3, LUA_TSTRING);
+    const char *value = luaL_checklstring(L, 3, &len);
     bool response = true;
-    if (!lua_isnoneornil(L, 3)) {
-        luaL_checktype(L, 3, LUA_TBOOLEAN);
-        response = lua_toboolean(L, 3);
+    if (!lua_isnoneornil(L, 4)) {
+        luaL_checktype(L, 4, LUA_TBOOLEAN);
+        response = lua_toboolean(L, 4);
     }
-    const uint32_t timeout = solua_ble_timeout(L, 4);
-    return solua_ble_check(L, solar_os_ble_session_write(solua_ble_get(L), handle,
+    const uint32_t timeout = solua_ble_timeout(L, 5);
+    return solua_ble_check(L, solar_os_ble_peer_write(solua_ble_get(L), solua_ble_peer(L), handle,
         (const uint8_t *)value, len, response, timeout));
 }

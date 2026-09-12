@@ -1082,36 +1082,44 @@ print("layout", solaros.ble.layout())
 ### `solaros.ble.gatt`
 
 Available when BLE support is compiled. This synchronous client owns one session
-per Python runtime; Lua and the shell have separate owners. Only one generic
-peer can be connected system-wide, independently of the OS keyboard.
+per Python runtime; Lua and the shell have separate owners. Each runtime may
+own multiple peers, with independent operations and connection state.
 
-- `connect(address, addr_type=0, timeout_ms=0)`: connect and discover services.
+- `capacity()`: total configured generic-peer capacity, not currently free slots.
+  One additional connection is reserved for the OS keyboard. Capacity is set by
+  firmware host/controller configuration, not an application peer-count limit.
+- `connect(address, addr_type=0, timeout_ms=0)`: connect, discover services, and
+  return an opaque peer handle.
   Use a colon-separated address such as `aa:bb:cc:dd:ee:ff`; address types are
   `0` public, `1` random, `2` public identity, and `3` random identity. Use
   `ble scan` in the shell to find the address and type.
-- `disconnect()`: request asynchronous disconnect of this runtime's peer.
-  Harmless before first use. It cannot disconnect the shell's or Lua's peer.
-- `status()`: return `owner`, `address`, `addr_type`, `status`, `connected`,
+- `disconnect(peer)`: invalidate the handle and request asynchronous disconnect.
+  It cannot disconnect another runtime's or the shell's peer.
+- `status(peer)`: return `owner`, `address`, `addr_type`, `status`, `connected`,
   `busy`, `retiring`, `mtu`, `service_count`, and `max_value_bytes`.
-- `services()`: return dictionaries with `index`, `uuid`, `primary`,
+- `services(peer)`: return dictionaries with `index`, `uuid`, `primary`,
   `start_handle`, and `end_handle`.
-- `characteristics(service_index)`: return dictionaries with `uuid`, `handle`,
+- `characteristics(peer, service_index)`: return dictionaries with `uuid`, `handle`,
   and the numeric Bluetooth `properties` bitmask. Pass the service's returned
   zero-based `index`.
-- `read(handle, timeout_ms=0)`: return characteristic data as `bytes`.
-- `write(handle, data, with_response=True, timeout_ms=0)`: write binary data.
+- `read(peer, handle, timeout_ms=0)`: return characteristic data as `bytes`.
+- `write(peer, handle, data, with_response=True, timeout_ms=0)`: write binary data.
   `data` must support the buffer protocol, for example `bytes` or `bytearray`.
   Without response, completion confirms local submission, not peer receipt.
 
 Arguments are positional. Timeouts accept `0..60000` milliseconds; zero selects
 12 seconds for connect or 5 seconds for read/write. Errors raise `OSError`;
-cancellation reports `BLE operation cancelled`. Timeout or cancellation retires
-the connection. Reconnect can fail with `ESP_ERR_INVALID_STATE` until teardown
-finishes. Rediscover handles after every reconnect, including after sleep.
+cancellation reports `BLE operation cancelled`. Capacity exhaustion reports
+`BLE connection capacity exhausted`; allocation can also fail. Existing peers
+remain connected when another connection cannot be admitted. Connect peers
+sequentially: concurrent connection establishment can report
+`ESP_ERR_INVALID_STATE`. Timeout or cancellation retires only the affected
+connection. Release its peer handle and connect again after teardown finishes.
+Rediscover characteristic handles after every reconnect, including after sleep.
 
-The runtime closes its session on normal exit, uncaught exceptions, and stop.
+The runtime closes its session and all peers on normal exit, uncaught exceptions, and stop.
 Waiting operations check script stop/deadline state every 50 ms. In the REPL,
-the session lasts until the interpreter exits; use `disconnect()` between peers.
+the session lasts until the interpreter exits; use `disconnect(peer)` when done.
 An explicitly caught error does not end the runtime or release its session.
 
 The current service retains at most 24 services and 64 characteristics per
@@ -1125,15 +1133,20 @@ subscription, GATT server, or advertising API yet.
 import solaros
 
 gatt = solaros.ble.gatt
+peers = []
 try:
-    gatt.connect("aa:bb:cc:dd:ee:ff", 1)  # replace address and type
-    print(gatt.status())
-    for service in gatt.services():
-        print(service)
-        print(gatt.characteristics(service["index"]))
-    # Use a readable handle from discovery: print(gatt.read(handle))
+    # Replace both addresses and address types with your peripherals.
+    peers.append(gatt.connect("aa:bb:cc:dd:ee:01", 1))
+    peers.append(gatt.connect("aa:bb:cc:dd:ee:02", 1))
+    for peer in peers:
+        print(gatt.status(peer))
+        for service in gatt.services(peer):
+            print(service)
+            print(gatt.characteristics(peer, service["index"]))
+        # Use a readable handle from this peer: print(gatt.read(peer, handle))
 finally:
-    gatt.disconnect()
+    for peer in peers:
+        gatt.disconnect(peer)
 ```
 
 ## `solaros.hid`

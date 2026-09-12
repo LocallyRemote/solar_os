@@ -1,8 +1,13 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdlib.h>
 #include "nimble_test_support.h"
+static bool fail_allocation;
+static void *test_calloc(size_t n, size_t size) { return fail_allocation ? NULL : calloc(n, size); }
+#define calloc test_calloc
 #include "../../src/services/solar_os_ble_nimble.c"
+#undef calloc
 
 static solar_os_ble_backend_event_t received[128];
 static size_t received_count;
@@ -47,6 +52,56 @@ static void retire(uint32_t epoch)
     assert(solar_os_ble_backend_cancel(epoch)==ESP_OK);
     nimble_test_drain();
     nimble_test_disconnect();
+    assert(solar_os_ble_nimble_client_idle());
+}
+
+static void multi_connected(uint32_t epoch, uint16_t conn)
+{
+    uint8_t bda[6]={1,2,3,4,5,(uint8_t)conn};
+    assert(solar_os_ble_backend_connect(epoch,epoch+1,bda,0)==ESP_OK);
+    nimble_test_drain();
+    void *arg=(void *)(uintptr_t)epoch;
+    struct ble_gap_event e={.type=BLE_GAP_EVENT_CONNECT,.connect={.conn_handle=conn}};
+    gap_callback(&e,arg);
+    fake.mtu_fn(conn,&ok,247,arg);
+    struct ble_gatt_svc svc={.start_handle=1,.end_handle=20,.uuid.u16={{16},0x180f}};
+    fake.svc(conn,&ok,&svc,arg);fake.svc(conn,&done,NULL,arg);
+    fake.included(conn,&done,NULL,arg);
+    struct ble_gatt_chr chr={.def_handle=2,.val_handle=3,.uuid.u16={{16},0x2a19}};
+    fake.chr(conn,&ok,&chr,arg);fake.chr(conn,&done,NULL,arg);
+    assert(find_epoch(epoch)->op==OP_NONE);
+}
+
+static void multi_disconnected(uint32_t epoch, uint16_t conn)
+{
+    struct ble_gap_event e={.type=BLE_GAP_EVENT_DISCONNECT,.disconnect={.conn={.conn_handle=conn}}};
+    gap_callback(&e,(void *)(uintptr_t)epoch);
+}
+
+static void test_multiple_peers(void)
+{
+    received_count=0;nimble_test_reset();
+    assert(solar_os_ble_backend_capacity()==3); /* Host capacity four, one reserved for HID. */
+    fail_allocation=true;
+    assert(solar_os_ble_backend_connect(90,91,address,0)==ESP_ERR_NO_MEM);
+    assert(!clients);fail_allocation=false;
+    multi_connected(100,10);multi_connected(200,11);multi_connected(300,12);
+    assert(solar_os_ble_backend_connect(400,401,address,0)==SOLAR_OS_BLE_ERR_CAPACITY);
+    assert(solar_os_ble_backend_read(100,110,3)==ESP_OK);nimble_test_drain();
+    assert(solar_os_ble_backend_read(200,210,3)==ESP_OK);nimble_test_drain();
+    assert(fake.read_calls==2); /* The second command must not resubmit peer one's read. */
+    uint8_t data=42;struct os_mbuf m={.len=1,.data=&data};struct ble_gatt_attr a={.handle=3,.om=&m};
+    value_callback(11,&ok,&a,(void *)(uintptr_t)210);
+    assert(received[received_count-1].epoch==200 && find_epoch(100)->op==OP_READ);
+    value_callback(10,&ok,&a,(void *)(uintptr_t)110);
+    assert(received[received_count-1].epoch==100);
+    assert(solar_os_ble_backend_cancel(100)==ESP_OK);nimble_test_drain();multi_disconnected(100,10);
+    assert(find_epoch(200) && find_epoch(300));
+    multi_connected(400,10); /* Reuse the transport ID, not the epoch. */
+    size_t before=received_count;
+    value_callback(10,&ok,&a,(void *)(uintptr_t)110);multi_disconnected(100,10);
+    assert(received_count==before && find_epoch(400));
+    multi_disconnected(200,11);multi_disconnected(300,12);multi_disconnected(400,10);
     assert(solar_os_ble_nimble_client_idle());
 }
 int main(void)
@@ -133,11 +188,12 @@ int main(void)
     fake.included(7,&ok,&svc,fake.arg);
     fake.included(7,&done,NULL,fake.arg);
     for(size_t i=0;i<3;++i)fake.chr(7,&done,NULL,fake.arg);
-    assert(client.count==3 && client.op==OP_NONE);
+    assert(find_epoch(60)->count==3 && find_epoch(60)->op==OP_NONE);
     retire(60);
     solar_os_ble_nimble_host_stopped();
     solar_os_ble_backend_reset();
     solar_os_ble_backend_register();
     connected(70); retire(70);
+    test_multiple_peers();
     puts("NimBLE adapter: cancellation, request identity, bounds, MTU and byte-copy tests passed");
 }

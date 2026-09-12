@@ -10,7 +10,7 @@ class ScriptBleBindingsTest(unittest.TestCase):
         descriptor = (ROOT / "src/apps/solar_os_script_api.inc").read_text()
         ble = descriptor.split("#if SOLAR_OS_PACKAGE_SERVICE_BLE\n", 1)[1].split("#endif", 1)[0]
         self.assertIn("SOLAR_OS_SCRIPT_API_FUNCTION(ble, read, read);", ble)
-        for method in ("connect", "disconnect", "status", "services", "characteristics", "read", "write"):
+        for method in ("capacity", "connect", "disconnect", "status", "services", "characteristics", "read", "write"):
             self.assertIn(f"SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, {method}, {method});", ble)
 
     def test_both_runtimes_release_on_all_teardown_paths(self):
@@ -36,6 +36,15 @@ class ScriptBleBindingsTest(unittest.TestCase):
         self.assertTrue({"index", "mtu", "retiring", "properties", "max_value_bytes"} <= py_fields)
         self.assertIn("mp_obj_new_bytes(value, len)", python)
         self.assertIn("lua_pushlstring(L, (const char *)value, len)", lua)
+
+    def test_explicit_owned_peers_in_both_languages(self):
+        for language in ("python", "lua"):
+            binding = (ROOT / f"src/apps/solar_os_{language}_ble.inc").read_text()
+            for operation in ("connect", "disconnect", "get_info", "services",
+                              "characteristics", "read", "write", "capacity"):
+                self.assertIn(f"solar_os_ble_peer_{operation}(", binding)
+            self.assertIn("BLE connection capacity exhausted", binding)
+            self.assertNotRegex(binding, r"solar_os_ble_session_(connect|read|write|disconnect)\(")
 
     def test_language_specific_buffers_and_bounded_arguments(self):
         for language in ("python", "lua"):

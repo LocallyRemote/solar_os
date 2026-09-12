@@ -1,4 +1,5 @@
 #pragma once
+#define CONFIG_BT_NIMBLE_MAX_CONNECTIONS 4
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>

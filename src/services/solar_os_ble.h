@@ -15,12 +15,14 @@
 #define SOLAR_OS_BLE_GATT_MAX_CHARACTERISTICS 64
 #define SOLAR_OS_BLE_GATT_VALUE_MAX 128
 #define SOLAR_OS_BLE_CONNECTION_INVALID UINT16_MAX
-#define SOLAR_OS_BLE_SESSION_MAX 4
 #define SOLAR_OS_BLE_OWNER_MAX 32
 #define SOLAR_OS_BLE_SESSION_INVALID 0U
 #define SOLAR_OS_BLE_ERR_CANCELLED ((esp_err_t)0xB1E0)
+#define SOLAR_OS_BLE_ERR_CAPACITY ((esp_err_t)0xB1E1)
+#define SOLAR_OS_BLE_PEER_INVALID 0U
 
 typedef uint32_t solar_os_ble_session_t;
+typedef uint32_t solar_os_ble_peer_t;
 typedef bool (*solar_os_ble_cancel_check_t)(void *user);
 
 typedef enum {
@@ -85,8 +87,9 @@ typedef struct {
 
 /* Owners retain a session handle and close it on exit (including errors).
  * Handles are generation checked; owner names are diagnostic, not credentials.
- * Four app sessions plus the reserved legacy shell session share ONE peer slot.
- * One blocking operation per session; cancel/close may run from another task.
+ * Sessions and peers are allocated dynamically. Each peer permits one blocking
+ * operation; cancel/close may run from another task. Session close/cancel affects
+ * all its peers. The session_* data operations retain a legacy default peer.
  * Cancellation aborts the connection and wakes a waiter with CANCELLED; it
  * cannot undo a write already sent. Close invalidates the handle immediately.
  * Transport reuse waits for backend retirement, even after close has returned.
@@ -114,6 +117,29 @@ esp_err_t solar_os_ble_session_characteristics(solar_os_ble_session_t session,
 esp_err_t solar_os_ble_session_read(solar_os_ble_session_t session,
     uint16_t handle, uint8_t *value, size_t max_len, size_t *value_len, uint32_t timeout_ms);
 esp_err_t solar_os_ble_session_write(solar_os_ble_session_t session,
+    uint16_t handle, const uint8_t *value, size_t value_len, bool with_response, uint32_t timeout_ms);
+
+/* Explicit peer handles are scoped to their owning session, never transport IDs.
+ * Connect allocates a new peer and returns its handle only on success. Disconnect
+ * invalidates that handle; storage survives outstanding callers and retirement.
+ * Capacity is the configured host/controller budget minus reserved HID capacity.
+ * CAPACITY and NO_MEM leave existing connections intact. Connect attempts can
+ * return INVALID_STATE while another GAP connection establishment is in progress.
+ * Peer handles survive remote disconnect/sleep for status; disconnect releases
+ * them, then connect returns a fresh handle with fresh discovery. */
+size_t solar_os_ble_peer_capacity(void);
+esp_err_t solar_os_ble_peer_connect(solar_os_ble_session_t session,
+    const uint8_t bda[6], uint8_t addr_type, uint32_t timeout_ms, solar_os_ble_peer_t *peer);
+esp_err_t solar_os_ble_peer_disconnect(solar_os_ble_session_t session, solar_os_ble_peer_t peer);
+esp_err_t solar_os_ble_peer_get_info(solar_os_ble_session_t session, solar_os_ble_peer_t peer,
+    solar_os_ble_session_info_t *info);
+esp_err_t solar_os_ble_peer_services(solar_os_ble_session_t session, solar_os_ble_peer_t peer,
+    solar_os_ble_gatt_service_t *services, size_t max_services, size_t *count);
+esp_err_t solar_os_ble_peer_characteristics(solar_os_ble_session_t session, solar_os_ble_peer_t peer,
+    size_t service_index, solar_os_ble_gatt_characteristic_t *chars, size_t max_chars, size_t *count);
+esp_err_t solar_os_ble_peer_read(solar_os_ble_session_t session, solar_os_ble_peer_t peer,
+    uint16_t handle, uint8_t *value, size_t max_len, size_t *value_len, uint32_t timeout_ms);
+esp_err_t solar_os_ble_peer_write(solar_os_ble_session_t session, solar_os_ble_peer_t peer,
     uint16_t handle, const uint8_t *value, size_t value_len, bool with_response, uint32_t timeout_ms);
 
 /* Lifecycle calls retain the current boot policy and the OS keyboard profile.

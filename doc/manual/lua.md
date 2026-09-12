@@ -98,9 +98,12 @@ Lua strings are binary-safe, so byte-oriented APIs such as `uart.read`, `i2c.rea
 ### Generic BLE GATT client
 
 `solaros.ble.gatt` mirrors the [Python GATT client](python.md#solarosblegatt):
-`connect(address, addr_type, timeout_ms)`, `disconnect()`, `status()`,
-`services()`, `characteristics(service_index)`, `read(handle, timeout_ms)`, and
-`write(handle, data, with_response, timeout_ms)`. Optional trailing arguments
+`capacity()`, `connect(address, addr_type, timeout_ms)`, `disconnect(peer)`,
+`status(peer)`, `services(peer)`, `characteristics(peer, service_index)`,
+`read(peer, handle, timeout_ms)`, and
+`write(peer, handle, data, with_response, timeout_ms)`. Connect returns an opaque
+peer handle; capacity reports the total configured generic-peer budget, not
+currently free slots. Optional trailing arguments
 may be omitted or `nil`; defaults are public address type, service-default
 timeout, and writes with response. Use dot calls, not colon method syntax.
 
@@ -111,22 +114,26 @@ limits, timeouts, retirement, and reconnect rules match Python. Errors raise Lua
 errors; cancellation reports `BLE operation cancelled`.
 
 Lua owns a separate session, automatically closed on interpreter exit, errors,
-or stop. Only one generic peer is available system-wide, independently of the
-keyboard. A caught error or completion of one REPL command does not close the
-interpreter's session. Use `disconnect()` when finished with a peer.
+or stop, closing all its peers. Multiple peers can coexist within the configured
+host/controller capacity, with one connection reserved for the keyboard.
+Connect peers sequentially; their subsequent operations are independent.
+Capacity exhaustion reports `BLE connection capacity exhausted`, and allocation
+can fail without disturbing existing peers. A caught error or completion of one
+REPL command does not close the interpreter's session. Use `disconnect(peer)`
+when finished with a peer.
 
 ```lua
 local gatt = solaros.ble.gatt
-gatt.connect("aa:bb:cc:dd:ee:ff", 1) -- replace address and type
-for _, service in ipairs(gatt.services()) do
+local peer = gatt.connect("aa:bb:cc:dd:ee:ff", 1) -- replace address and type
+for _, service in ipairs(gatt.services(peer)) do
     print(service.uuid, service.index)
-    for _, characteristic in ipairs(gatt.characteristics(service.index)) do
+    for _, characteristic in ipairs(gatt.characteristics(peer, service.index)) do
         print(characteristic.uuid, characteristic.handle)
     end
 end
--- Use a discovered handle: local data = gatt.read(handle)
--- Binary write: gatt.write(handle, string.char(0, 255), true)
-gatt.disconnect()
+-- Use a discovered handle: local data = gatt.read(peer, handle)
+-- Binary write: gatt.write(peer, handle, string.char(0, 255), true)
+gatt.disconnect(peer)
 ```
 
 ### Generic pointer and axis input

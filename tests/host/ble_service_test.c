@@ -9,6 +9,9 @@
 #include "solar_os_ble.h"
 #include "solar_os_ble_backend.h"
 
+#define TEST_SESSION_COUNT 16
+size_t solar_os_ble_backend_capacity(void) { return 1; }
+
 static pthread_mutex_t fake_lock = PTHREAD_MUTEX_INITIALIZER;
 static pthread_cond_t fake_changed = PTHREAD_COND_INITIALIZER;
 static solar_os_ble_backend_event_t submitted;
@@ -94,7 +97,8 @@ void solar_os_ble_backend_resume(void) { assert(solar_os_ble_backend_init() == E
 esp_err_t solar_os_ble_backend_connect(uint32_t epoch, uint32_t request,
     const uint8_t bda[6], uint8_t addr_type)
 {
-    assert(fake_epoch == 0 && epoch != 0 && request != 0);
+    assert(epoch != 0 && request != 0);
+    if (fake_epoch) return ESP_ERR_INVALID_STATE;
     assert(memcmp(bda, peer, sizeof(peer)) == 0 && addr_type == SOLAR_OS_BLE_ADDR_RANDOM);
     if (submit_result != ESP_OK) {
         return submit_result;
@@ -298,12 +302,13 @@ int main(void)
     assert(!solar_os_ble_parse_address("01:02:03:04:05:0g", 17, parsed));
     assert(!solar_os_ble_parse_address("01:02:03:04:05:\0X", 17, parsed));
     assert(!solar_os_ble_parse_address(NULL, 17, parsed));
-    solar_os_ble_session_t ids[SOLAR_OS_BLE_SESSION_MAX], extra;
+    solar_os_ble_session_t ids[TEST_SESSION_COUNT], extra;
     assert(solar_os_ble_session_create("", &extra) == ESP_ERR_INVALID_ARG);
-    for (unsigned i = 0; i < SOLAR_OS_BLE_SESSION_MAX; i++) {
+    for (unsigned i = 0; i < TEST_SESSION_COUNT; i++) {
         assert(solar_os_ble_session_create("test", &ids[i]) == ESP_OK);
     }
-    assert(solar_os_ble_session_create("overflow", &extra) == ESP_ERR_NO_MEM);
+    assert(solar_os_ble_session_create("dynamic", &extra) == ESP_OK);
+    assert(solar_os_ble_session_close(extra) == ESP_OK);
     const solar_os_ble_session_t stale = ids[3];
     assert(solar_os_ble_session_close(stale) == ESP_OK);
     assert(solar_os_ble_session_create("replacement", &ids[3]) == ESP_OK && ids[3] != stale);
@@ -418,7 +423,7 @@ int main(void)
     assert(solar_os_ble_session_get_info(ids[1], &info) == ESP_OK && info.gatt.connected);
     assert(solar_os_ble_session_cancel(ids[1]) == ESP_OK);
     retired();
-    for (unsigned i = 1; i < SOLAR_OS_BLE_SESSION_MAX; i++) {
+    for (unsigned i = 1; i < TEST_SESSION_COUNT; i++) {
         assert(solar_os_ble_session_close(ids[i]) == ESP_OK);
     }
 
