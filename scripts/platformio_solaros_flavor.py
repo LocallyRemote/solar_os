@@ -117,10 +117,14 @@ if not sdkconfig_path.is_absolute():
     sdkconfig_path = project_dir / sdkconfig_path
 if sdkconfig_path.is_file():
     sdkconfig_lines = sdkconfig_path.read_text(encoding="utf-8").splitlines()
-    if ("CONFIG_BT_ENABLED=y" in sdkconfig_lines
-            and "CONFIG_BT_NIMBLE_ENABLED=y" not in sdkconfig_lines):
+    required_config = (project_dir / "patches/nimble/required_config.txt").read_text(
+        encoding="utf-8"
+    ).splitlines()
+    missing_config = [key for key in required_config if f"{key}=y" not in sdkconfig_lines]
+    if "CONFIG_BT_ENABLED=y" in sdkconfig_lines and missing_config:
         print(
-            f"SolarOS BLE requires NimBLE; CMake will regenerate {sdkconfig_path} "
+            f"SolarOS BLE configuration missing {', '.join(missing_config)}; "
+            f"CMake will regenerate {sdkconfig_path} "
             "from SDK configuration defaults without a backup"
         )
 
@@ -158,6 +162,7 @@ tracked_files = (
     project_dir / "scripts" / "platformio_solaros_flavor.py",
     project_dir / "scripts" / "solaros_update_layout.py",
     project_dir / "scripts" / "solaros_build_lock.py",
+    project_dir / "patches" / "nimble" / "required_config.txt",
     project_dir / "scripts" / "validate_board_metadata.py",
     project_dir / "scripts" / "generate_board_profile.py",
     project_dir / "scripts" / "solaros_board_manifest.py",

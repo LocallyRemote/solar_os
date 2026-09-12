@@ -1,9 +1,12 @@
 # Called after project(): replace only this project's bt target sources.
-if(CONFIG_BT_ENABLED AND NOT CONFIG_BT_NIMBLE_ENABLED)
-    message(FATAL_ERROR
-        "SolarOS BLE requires NimBLE, but the SDK configuration defaults select another host. "
-        "Enable CONFIG_BT_NIMBLE_ENABLED in the selected sdkconfig.defaults files. "
-        "Active SDKCONFIG: ${SDKCONFIG}")
+if(CONFIG_BT_ENABLED)
+    foreach(required IN LISTS solar_os_nimble_required_config)
+        if(NOT ${required})
+            message(FATAL_ERROR
+                "SolarOS BLE requires ${required}=y in the selected SDK configuration defaults. "
+                "Active SDKCONFIG: ${SDKCONFIG}")
+        endif()
+    endforeach()
 endif()
 
 if(CONFIG_BT_NIMBLE_ENABLED AND CONFIG_BT_NIMBLE_DYNAMIC_SERVICE)
