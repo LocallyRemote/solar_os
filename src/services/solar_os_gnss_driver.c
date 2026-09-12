@@ -15,7 +15,6 @@ static const solar_os_expansion_binding_spec_t binding_specs[] = {
 const solar_os_expansion_driver_t solar_os_gnss_expansion_driver = {
     .name                 = "uart-gnss",
     .summary              = "UART GNSS module",
-    .category             = SOLAR_OS_EXPANSION_CATEGORY_SENSOR,
     .required_capabilities = SOLAR_OS_BOARD_CAP_EXPANSION_UART,
     .probe_supported      = false,
     .binding_specs        = binding_specs,

@@ -91,8 +91,9 @@ esp_err_t solar_os_gnss_detach(const char *name)
         return ESP_ERR_NOT_FOUND;
     }
     const esp_err_t ret = solar_os_uart_unregister_bus(gnss.uart_bus);
-    if (ret == ESP_OK) {
+    if (ret == ESP_OK || ret == ESP_ERR_INVALID_STATE) {
         memset(&gnss, 0, sizeof(gnss));
+        return ESP_OK;
     }
     return ret;
 }
