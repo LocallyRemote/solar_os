@@ -936,6 +936,10 @@ available for the compiled board.
 | `gnss` | `gnss nmea [ms] [hex]` | Read raw bytes from the GNSS module; displays sanitized text or a hex dump. Default timeout 500 ms. |
 | `gnss` | `gnss write <text>` | Send text followed by CR+LF to the GNSS module UART TX. |
 | `gnss` | `gnss reset` | Send PMTK314 to the GNSS module to enable GGA and RMC NMEA output. |
+| `nfc` | `nfc [status]` | Show NFC power state and whether the chip is initialised. |
+| `nfc` | `nfc scan [ms]` | Scan for an ISO 14443A tag and print its UID, ATQA, and SAK. Default timeout 5000 ms. |
+| `nfc` | `nfc read [ms]` | Alias for `nfc scan`. |
+| `nfc` | `nfc power [on\|off]` | Show or set NFC reader power state via the XL9555 NFC_EN rail. |
 | `gpio` | `gpio status` or `gpio list` | List board GPIOs with free, releasable, or fixed pin policy. |
 | `gpio` | `gpio mode <pin> <in|out> [none|up|down]` | Configure a runtime GPIO. |
 | `gpio` | `gpio read <pin>` | Read a runtime GPIO. |

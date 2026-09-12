@@ -45,6 +45,9 @@
 #if SOLAR_OS_PACKAGE_TLORA_PAGER_CORE
 #include "solar_os_tlora_pager_core.h"
 #endif
+#if SOLAR_OS_PACKAGE_ST25R3916
+#include "solar_os_st25r3916.h"
+#endif
 
 #define SOLAR_OS_SHELL_ARG_MAX 20
 #define I2C_READ_MAX_LEN 32
@@ -1032,6 +1035,104 @@ void solar_os_shell_cmd_gnss(solar_os_context_t *ctx, int argc, char **argv)
     }
 }
 #endif
+
+#if SOLAR_OS_PACKAGE_ST25R3916
+void solar_os_shell_cmd_nfc(solar_os_context_t *ctx, int argc, char **argv)
+{
+    solar_os_shell_io_t *term = terminal(ctx);
+
+    /* Default subcommand: status */
+    const char *subcmd = (argc >= 2) ? argv[1] : "status";
+
+    if (strcmp(subcmd, "status") == 0) {
+        const bool attached = solar_os_st25r3916_is_ready();
+#if SOLAR_OS_PACKAGE_TLORA_PAGER_CORE
+        const bool powered = solar_os_tlora_pager_core_get_nfc_power();
+        solar_os_shell_io_printf(term, "nfc power:  %s\n", powered ? "on" : "off");
+#endif
+        solar_os_shell_io_printf(term, "nfc chip:   %s\n",
+                                 attached ? "ready" : "not initialised");
+        return;
+    }
+
+    if (strcmp(subcmd, "scan") == 0 || strcmp(subcmd, "read") == 0) {
+        uint32_t timeout_ms = 5000;
+        if (argc >= 3) {
+            char *end = NULL;
+            long v = strtol(argv[2], &end, 10);
+            if (end == argv[2] || *end != '\0' || v <= 0 || v > 60000) {
+                solar_os_shell_diag_invalid(term, "nfc scan", "ms", argv[2],
+                                            "1–60000", "nfc scan [ms]", false);
+                return;
+            }
+            timeout_ms = (uint32_t)v;
+        }
+        solar_os_st25r3916_tag_t tag;
+        solar_os_shell_io_printf(term, "nfc scan: waiting up to %u ms...\n", (unsigned)timeout_ms);
+        const esp_err_t err = solar_os_st25r3916_scan(timeout_ms, &tag);
+        if (err == ESP_ERR_INVALID_STATE) {
+            solar_os_shell_io_writeln(term, "nfc: no NFC device attached");
+        } else if (err == ESP_ERR_NOT_FOUND) {
+            solar_os_shell_io_writeln(term, "nfc scan: no tag found");
+        } else if (err != ESP_OK) {
+            solar_os_shell_io_printf(term, "nfc scan failed: %s\n", esp_err_to_name(err));
+        } else {
+            solar_os_shell_io_printf(term, "UID (%u bytes):", (unsigned)tag.uid_len);
+            for (size_t i = 0; i < tag.uid_len; i++) {
+                solar_os_shell_io_printf(term, " %02X", tag.uid[i]);
+            }
+            solar_os_shell_io_writeln(term, "");
+            solar_os_shell_io_printf(term, "ATQA: %02X %02X\n", tag.atqa[0], tag.atqa[1]);
+            solar_os_shell_io_printf(term, "SAK:  %02X", tag.sak);
+            if (tag.sak == 0x20U) {
+                solar_os_shell_io_writeln(term, "  (ISO 14443-4 / MIFARE DESFire)");
+            } else if ((tag.sak & 0x20U) == 0U && (tag.sak & 0x40U) == 0U) {
+                solar_os_shell_io_writeln(term, "  (MIFARE Classic / Ultralight)");
+            } else {
+                solar_os_shell_io_writeln(term, "");
+            }
+        }
+        return;
+    }
+
+#if SOLAR_OS_PACKAGE_TLORA_PAGER_CORE
+    if (strcmp(subcmd, "power") == 0) {
+        if (argc == 2) {
+            solar_os_shell_io_printf(term, "nfc power: %s\n",
+                                     solar_os_tlora_pager_core_get_nfc_power() ? "on" : "off");
+            return;
+        }
+        if (argc >= 4) {
+            solar_os_shell_diag_unexpected(term, "nfc power", argv[3], "nfc power [on|off]");
+            return;
+        }
+        bool on;
+        if (strcmp(argv[2], "on") == 0) {
+            on = true;
+        } else if (strcmp(argv[2], "off") == 0) {
+            on = false;
+        } else {
+            solar_os_shell_diag_invalid(term, "nfc power", "state", argv[2],
+                                        "on or off", "nfc power [on|off]", false);
+            return;
+        }
+        const esp_err_t perr = solar_os_tlora_pager_core_set_nfc_power(on);
+        if (perr != ESP_OK) {
+            solar_os_shell_io_printf(term, "nfc power failed: %s\n", esp_err_to_name(perr));
+        } else {
+            if (!on) {
+                solar_os_st25r3916_reset_chip();
+            }
+            solar_os_shell_io_printf(term, "nfc power: %s\n", on ? "on" : "off");
+        }
+        return;
+    }
+#endif /* SOLAR_OS_PACKAGE_TLORA_PAGER_CORE */
+
+    solar_os_shell_io_writeln(term,
+        "usage: nfc [status] | nfc scan [ms] | nfc read [ms] | nfc power [on|off]");
+}
+#endif /* SOLAR_OS_PACKAGE_ST25R3916 */
 
 void solar_os_shell_cmd_battery(solar_os_context_t *ctx, int argc, char **argv)
 {

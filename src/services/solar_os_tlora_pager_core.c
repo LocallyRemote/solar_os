@@ -36,9 +36,11 @@
 #define XL9555_REG_CONFIG_PORT1 0x07U
 
 /* Port0 bit0..7: DRV_EN, AMP_EN, KB_RST, LORA_EN, GPS_EN, NFC_EN, (NC), GPS_RST */
-#define XL9555_PORT0_OUTPUT_VALUE 0xBFU
+/* GPS_EN (bit4) and NFC_EN (bit5) are left LOW at boot — power them on explicitly. */
+#define XL9555_PORT0_OUTPUT_VALUE 0x8FU
 #define XL9555_PORT0_CONFIG_VALUE 0x40U /* bit6 (NC) left as input; the rest are outputs */
 #define XL9555_PORT0_GPS_EN_BIT   0x10U /* bit4: GPS power enable, active HIGH */
+#define XL9555_PORT0_NFC_EN_BIT   0x20U /* bit5: NFC power enable, active HIGH */
 
 /* Port1 bit0..7 (global bit8..15): KB_EN, GPIO_EN, SD_DET, SD_PULLEN, SD_EN, (NC x3) */
 /* SD_PULLEN (bit3) enables hardware pullups on SD data lines — must be driven HIGH */
@@ -201,4 +203,25 @@ bool solar_os_tlora_pager_core_get_gnss_power(void)
 {
     return core_device.active &&
            (core_device.port0_output & XL9555_PORT0_GPS_EN_BIT) != 0U;
+}
+
+esp_err_t solar_os_tlora_pager_core_set_nfc_power(bool on)
+{
+    if (!core_device.active) {
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (on) {
+        core_device.port0_output |= XL9555_PORT0_NFC_EN_BIT;
+    } else {
+        core_device.port0_output &= (uint8_t)~XL9555_PORT0_NFC_EN_BIT;
+    }
+    return solar_os_bus_i2c_write_reg(core_device.i2c_bus, core_device.address,
+                                      XL9555_REG_OUTPUT_PORT0,
+                                      &core_device.port0_output, 1);
+}
+
+bool solar_os_tlora_pager_core_get_nfc_power(void)
+{
+    return core_device.active &&
+           (core_device.port0_output & XL9555_PORT0_NFC_EN_BIT) != 0U;
 }
