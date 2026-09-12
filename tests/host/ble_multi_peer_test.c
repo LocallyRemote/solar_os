@@ -17,6 +17,7 @@ typedef struct { uint32_t epoch; uint16_t conn; } fake_peer_t;
 static fake_peer_t peers[3];
 static atomic_uint delayed_epoch, read_request;
 static bool defer_retirement;
+static bool defer_subscription;
 
 size_t solar_os_ble_backend_capacity(void) { return 3; }
 esp_err_t solar_os_ble_backend_register(void) { return ESP_OK; }
@@ -83,6 +84,84 @@ esp_err_t solar_os_ble_backend_write(uint32_t epoch,uint32_t request,uint16_t ha
     solar_os_ble_service_event(&e); return ESP_OK;
 }
 
+esp_err_t solar_os_ble_backend_subscribe(uint32_t epoch, uint32_t request, uint16_t handle, uint8_t mode)
+{
+    solar_os_ble_backend_event_t e={.type=SOLAR_OS_BLE_BACKEND_SUBSCRIBED,
+        .epoch=epoch,.request=request,.conn_id=peer_for(epoch)->conn,.handle=handle,.subscription_mode=mode};
+    if (!defer_subscription) solar_os_ble_service_event(&e);
+    return ESP_OK;
+}
+
+static void notify_peer(solar_os_ble_peer_t peer, uint16_t handle, bool indication, size_t len)
+{
+    uint8_t data[SOLAR_OS_BLE_GATT_VALUE_MAX+1]; memset(data,0xff,sizeof(data)); data[0]=0;
+    ble_session_t *s=find_locked(peer);
+    solar_os_ble_backend_event_t e={.type=SOLAR_OS_BLE_BACKEND_NOTIFICATION,
+        .epoch=s->link.epoch,.conn_id=s->link.info.conn_id,.handle=handle,
+        .value=data,.value_len=len,.indication=indication};
+    solar_os_ble_service_event(&e);
+    memset(data,0x42,sizeof(data));
+}
+
+static size_t entries(void);
+static void test_notifications(void)
+{
+    solar_os_ble_session_t owner,other;
+    solar_os_ble_peer_t a,b;
+    uint8_t addr[6]={1,2,3,4,5,1};
+    assert(solar_os_ble_session_create("notifications",&owner)==ESP_OK);
+    assert(solar_os_ble_session_create("foreign",&other)==ESP_OK);
+    assert(solar_os_ble_peer_connect(owner,addr,0,100,&a)==ESP_OK);
+    addr[5]=2;assert(solar_os_ble_peer_connect(owner,addr,0,100,&b)==ESP_OK);
+    solar_os_ble_notification_t event;
+    assert(solar_os_ble_peer_poll(other,a,&event)==ESP_ERR_INVALID_STATE);
+    assert(solar_os_ble_peer_configure_queue(owner,a,0)==ESP_ERR_INVALID_ARG);
+    assert(solar_os_ble_peer_configure_queue(owner,a,SIZE_MAX)==ESP_ERR_INVALID_ARG);
+    fail_allocation=true;
+    assert(solar_os_ble_peer_subscribe(owner,a,3,1,100)==ESP_ERR_NO_MEM);
+    fail_allocation=false;
+    assert(solar_os_ble_peer_configure_queue(owner,a,2)==ESP_OK);
+    fail_allocation=true;
+    assert(solar_os_ble_peer_configure_queue(owner,a,4)==ESP_ERR_NO_MEM);
+    fail_allocation=false;
+    assert(solar_os_ble_peer_subscribe(owner,a,3,1,100)==ESP_OK);
+    assert(solar_os_ble_peer_subscribe(owner,b,3,2,100)==ESP_OK);
+    notify_peer(a,3,false,2);notify_peer(a,4,true,0);notify_peer(a,3,false,2);
+    notify_peer(b,3,true,2);
+    solar_os_ble_session_info_t info;
+    assert(solar_os_ble_peer_get_info(owner,a,&info)==ESP_OK && info.event_count==2 && info.events_dropped==1);
+    assert(solar_os_ble_peer_configure_queue(owner,a,4)==ESP_ERR_INVALID_STATE);
+    assert(solar_os_ble_peer_poll(owner,a,&event)==ESP_OK && !event.indication && event.value_len==2);
+    assert(event.value[0]==0 && event.value[1]==255);
+    notify_peer(a,5,false,2); /* Ring wraps; unsubscribe compaction preserves other handles. */
+    assert(solar_os_ble_peer_subscribe(owner,a,4,0,100)==ESP_OK);
+    assert(solar_os_ble_peer_poll(owner,a,&event)==ESP_OK && event.handle==5);
+    assert(solar_os_ble_peer_poll(owner,a,&event)==ESP_ERR_NOT_FOUND);
+    notify_peer(a,3,false,129);
+    assert(solar_os_ble_peer_get_info(owner,a,&info)==ESP_OK && info.events_dropped==2 && !info.event_count);
+    assert(solar_os_ble_peer_poll(owner,b,&event)==ESP_OK && event.indication);
+    assert(solar_os_ble_peer_configure_queue(owner,a,4)==ESP_OK);
+    notify_peer(a,3,false,1);
+    assert(solar_os_ble_session_cancel(owner)==ESP_OK);
+    assert(solar_os_ble_peer_poll(owner,a,&event)==ESP_ERR_INVALID_STATE);
+    assert(solar_os_ble_peer_get_info(owner,a,&info)==ESP_OK && !info.event_capacity);
+    assert(solar_os_ble_session_close(owner)==ESP_OK);
+    assert(solar_os_ble_session_close(other)==ESP_OK && entries()==0);
+    assert(solar_os_ble_session_create("subscription-timeout",&owner)==ESP_OK);
+    assert(solar_os_ble_peer_connect(owner,addr,0,100,&a)==ESP_OK);
+    addr[5]=3; assert(solar_os_ble_peer_connect(owner,addr,0,100,&b)==ESP_OK);
+    assert(solar_os_ble_peer_subscribe(owner,b,3,1,100)==ESP_OK);
+    defer_subscription=true;
+    assert(solar_os_ble_peer_subscribe(owner,a,3,1,1)==ESP_ERR_TIMEOUT);
+    defer_subscription=false;
+    notify_peer(b,3,false,2);
+    assert(solar_os_ble_peer_poll(owner,b,&event)==ESP_OK);
+    assert(solar_os_ble_prepare_sleep(100)==ESP_OK);
+    assert(solar_os_ble_peer_poll(owner,b,&event)==ESP_ERR_INVALID_STATE);
+    solar_os_ble_resume();
+    assert(solar_os_ble_session_close(owner)==ESP_OK && entries()==0);
+}
+
 typedef struct { solar_os_ble_session_t owner; solar_os_ble_peer_t peer; esp_err_t result; } call_t;
 static void *reader(void *arg)
 { call_t *c=arg; uint8_t value; size_t n; c->result=solar_os_ble_peer_read(c->owner,c->peer,3,&value,1,&n,5000); return NULL; }
@@ -110,6 +189,8 @@ int main(void)
     solar_os_ble_gatt_service_t svc;size_t count;
     assert(solar_os_ble_peer_services(owner,b,&svc,1,&count)==ESP_OK && !strcmp(svc.uuid,"peer-2"));
     const uint32_t epoch_a=find_locked(a)->link.epoch;
+    assert(solar_os_ble_peer_subscribe(owner,a,3,1,100)==ESP_OK);
+    assert(solar_os_ble_peer_subscribe(owner,b,3,2,100)==ESP_OK);
     atomic_store(&delayed_epoch,epoch_a);
     call_t call={.owner=owner,.peer=a};pthread_t thread;
     assert(pthread_create(&thread,NULL,reader,&call)==0);
@@ -117,6 +198,11 @@ int main(void)
         struct timespec t={.tv_nsec=1000000};nanosleep(&t,NULL);
     }
     assert(atomic_load(&read_request));check_read(owner,b,8);
+    solar_os_ble_notification_t notification;
+    notify_peer(a,3,false,2); notify_peer(b,3,true,2);
+    assert(solar_os_ble_peer_poll(owner,a,&notification)==ESP_OK && !notification.indication);
+    assert(solar_os_ble_peer_poll(owner,b,&notification)==ESP_OK && notification.indication);
+    assert(find_locked(a)->pending); /* Notification delivery does not finish a blocked read. */
     assert(solar_os_ble_peer_disconnect(owner,a)==ESP_OK);
     assert(pthread_join(thread,NULL)==0 && call.result==SOLAR_OS_BLE_ERR_CANCELLED);
     assert(solar_os_ble_peer_get_info(owner,a,&info)==ESP_ERR_INVALID_STATE);
@@ -145,4 +231,6 @@ int main(void)
     assert(solar_os_ble_peer_disconnect(other,c)==ESP_OK);
     assert(solar_os_ble_session_close(other)==ESP_OK && entries()==0);
     puts("BLE multi-peer: dynamic allocation, ownership, independent I/O, capacity, timeout, close and sleep OK");
+    test_notifications();
+    puts("BLE notifications: owned queues, binary copy, overflow, unsubscribe, timeout and cleanup OK");
 }

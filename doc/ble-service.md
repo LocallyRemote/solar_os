@@ -174,12 +174,49 @@ and `CONFIG_BT_NIMBLE_GATT_SERVER=y`, and disable
   with explicit peer handles, a lazily allocated runtime-owned session and
   automatic cleanup of every peer before VM teardown. Cooperative checks use
   the existing stop/deadline signals. Legacy
-  `solaros.ble.read()` still reads decoded keyboard input. Public event queues,
-  notifications, GATT servers, and advertising are not exposed.
+  `solaros.ble.read()` still reads decoded keyboard input.
+  GATT servers and advertising are not exposed. Notifications and indications
+  use the per-peer polling interface described below.
 - `service.ble` selects the service, adapter, and keyboard profile under the
   existing package and board capability gates.
 
+## Notification and indication subscriptions
+
+`solar_os_ble_peer_subscribe(session, peer, handle, mode, timeout_ms)` uses mode
+0 to unsubscribe, 1 for notifications, or 2 for indications. The adapter checks
+the characteristic properties, discovers descriptors from the value handle up
+to the next characteristic declaration (or service end), and writes its actual
+CCCD. It does not assume CCCD equals value handle plus one. Descriptor and write
+callbacks carry immutable request tokens. Setup shares the peer's normal busy,
+timeout, cancellation and retirement machinery; unrelated peers remain usable.
+Only successful CCCD acknowledgement changes local delivery mode. A failed write
+preserves the prior mode. Packets arriving before enable acknowledgement are
+not delivered. Successful unsubscribe also purges queued values for its handle.
+
+The service owns a dynamically allocated ring per peer. First subscribe defaults
+to 16 entries; `solar_os_ble_peer_configure_queue()` allows a positive capacity
+subject to checked allocation, while connected, idle and empty. Failed resizing
+preserves storage and counters. No allocation occurs on incoming notification
+callbacks. The adapter copies chained mbufs into a bounded local value, and the
+synchronous service sink copies into its queue before the callback returns.
+Queue-full drops the newest event; oversized or unreadable payloads are dropped
+whole. Status exposes capacity, queued count and a saturating dropped counter.
+`solar_os_ble_peer_poll()` is nonblocking, returns NOT_FOUND when empty, and can
+run alongside a blocking operation. It returns owned copies, never host buffers.
+Disconnect/cancel/timeout/sleep discard events and free the ring; peer loss
+counters survive until the peer handle is released. NimBLE sends ATT indication
+confirmations independently of application consumption and queue overflow.
+
+Python and Lua expose subscribe/unsubscribe, configure_queue and poll through
+the shared script descriptor. Poll returns handle, binary data and indication
+flag (or None/nil when empty). No interpreter callback runs on the host task.
+
 ## Validation
+
+Host-driven BLE scripts and Python source checks live in the sibling
+`solar_os_test` repository; see its `doc/ble.md` for the controlled BlueZ GATT
+peer, explicit notification/indication sends, and opt-in live delivery test.
+Compiled C tests remain here with the production source and host stubs.
 
 Build and run the host tests:
 
@@ -220,3 +257,9 @@ application reads two peripherals. Disconnect or time out either peripheral and
 confirm the other still works. Attempt a connection beyond configured capacity,
 check that existing links survive, and measure heap use before connection and
 after all peers are released. Repeat across script stop and sleep/wake.
+
+Subscription checks should use two notifying peers alongside the keyboard:
+verify notification/indication flags and binary payloads, subscription write
+errors and timeout isolation, unsubscribe suppression, queue overflow counters,
+and cleanup on VM exit and sleep. Host tests exercise these state transitions;
+radio delivery and indication acknowledgement still require target validation.

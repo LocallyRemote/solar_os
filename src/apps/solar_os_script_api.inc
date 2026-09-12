@@ -458,6 +458,10 @@ SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, services, services);
 SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, characteristics, characteristics);
 SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, read, read);
 SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, write, write);
+SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, subscribe, subscribe);
+SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, unsubscribe, unsubscribe);
+SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, configure_queue, configure_queue);
+SOLAR_OS_SCRIPT_API_SUBMODULE_FUNCTION(ble, gatt, poll, poll);
 SOLAR_OS_SCRIPT_API_SUBMODULE_END(ble, gatt);
 SOLAR_OS_SCRIPT_API_MODULE_END(ble);
 #endif

@@ -18,6 +18,7 @@ static solar_os_ble_backend_event_t submitted;
 static unsigned submissions, cancellations;
 static uint32_t fake_epoch;
 static bool initialized, defer_connect, defer_read, defer_write;
+static bool defer_subscription;
 static bool write_response;
 static esp_err_t submit_result;
 static const uint8_t peer[6] = {1, 2, 3, 4, 5, 6};
@@ -190,6 +191,15 @@ esp_err_t solar_os_ble_backend_write(uint32_t epoch, uint32_t request, uint16_t 
     if (!defer_write) {
         solar_os_ble_service_event(&event);
     }
+    return ESP_OK;
+}
+
+esp_err_t solar_os_ble_backend_subscribe(uint32_t epoch, uint32_t request, uint16_t handle, uint8_t mode)
+{
+    solar_os_ble_backend_event_t e = {.type=SOLAR_OS_BLE_BACKEND_SUBSCRIBED,
+        .epoch=epoch,.request=request,.conn_id=7,.handle=handle,.subscription_mode=mode};
+    record(e);
+    if (!defer_subscription) solar_os_ble_service_event(&e);
     return ESP_OK;
 }
 

@@ -104,6 +104,9 @@ static mp_obj_t solaros_ble_gatt_status(mp_obj_t peer_obj)
     python_dict_store_uint(result, "mtu", info.gatt.mtu);
     python_dict_store_uint(result, "service_count", info.gatt.service_count);
     python_dict_store_uint(result, "max_value_bytes", SOLAR_OS_BLE_GATT_VALUE_MAX);
+    python_dict_store_uint(result, "event_capacity", info.event_capacity);
+    python_dict_store_uint(result, "event_count", info.event_count);
+    python_dict_store_uint(result, "events_dropped", info.events_dropped);
     return result;
 }
 MP_DEFINE_CONST_FUN_OBJ_1(solaros_ble_gatt_status_obj, solaros_ble_gatt_status);
@@ -180,3 +183,50 @@ static mp_obj_t solaros_ble_gatt_write(size_t n_args, const mp_obj_t *args)
     return mp_const_none;
 }
 MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(solaros_ble_gatt_write_obj, 3, 5, solaros_ble_gatt_write);
+
+static mp_obj_t solaros_ble_gatt_subscribe(size_t n_args, const mp_obj_t *args)
+{
+    const uint16_t handle = python_ble_handle(args[1]);
+    bool indication = false;
+    if (n_args > 2 && args[2] != mp_const_none) {
+        if (args[2] != mp_const_true && args[2] != mp_const_false)
+            mp_raise_ValueError(MP_ERROR_TEXT("indicate must be boolean"));
+        indication = args[2] == mp_const_true;
+    }
+    const uint32_t timeout = python_ble_timeout(n_args, args, 3);
+    python_ble_check(solar_os_ble_peer_subscribe(python_ble_get(), python_u32_from_obj(args[0]),
+        handle, indication ? 2 : 1, timeout));
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(solaros_ble_gatt_subscribe_obj, 2, 4, solaros_ble_gatt_subscribe);
+
+static mp_obj_t solaros_ble_gatt_unsubscribe(size_t n_args, const mp_obj_t *args)
+{
+    const uint16_t handle = python_ble_handle(args[1]);
+    const uint32_t timeout = python_ble_timeout(n_args, args, 2);
+    python_ble_check(solar_os_ble_peer_subscribe(python_ble_get(), python_u32_from_obj(args[0]), handle, 0, timeout));
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_VAR_BETWEEN(solaros_ble_gatt_unsubscribe_obj, 2, 3, solaros_ble_gatt_unsubscribe);
+
+static mp_obj_t solaros_ble_gatt_configure_queue(mp_obj_t peer_obj, mp_obj_t capacity_obj)
+{
+    const uint32_t capacity = python_u32_from_obj(capacity_obj);
+    python_ble_check(solar_os_ble_peer_configure_queue(python_ble_get(), python_u32_from_obj(peer_obj), capacity));
+    return mp_const_none;
+}
+MP_DEFINE_CONST_FUN_OBJ_2(solaros_ble_gatt_configure_queue_obj, solaros_ble_gatt_configure_queue);
+
+static mp_obj_t solaros_ble_gatt_poll(mp_obj_t peer_obj)
+{
+    solar_os_ble_notification_t event;
+    esp_err_t err = solar_os_ble_peer_poll(python_ble_get(), python_u32_from_obj(peer_obj), &event);
+    if (err == ESP_ERR_NOT_FOUND) return mp_const_none;
+    python_ble_check(err);
+    mp_obj_t result = mp_obj_new_dict(3);
+    python_dict_store_uint(result, "handle", event.handle);
+    python_dict_store_bool(result, "indication", event.indication);
+    mp_obj_dict_store(result, python_key("data"), mp_obj_new_bytes(event.value, event.value_len));
+    return result;
+}
+MP_DEFINE_CONST_FUN_OBJ_1(solaros_ble_gatt_poll_obj, solaros_ble_gatt_poll);

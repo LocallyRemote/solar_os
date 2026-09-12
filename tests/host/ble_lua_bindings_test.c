@@ -48,7 +48,9 @@ static lua_State *new_vm(void)
         {"connect", solua_ble_gatt_connect}, {"disconnect", solua_ble_gatt_disconnect},
         {"status", solua_ble_gatt_status}, {"services", solua_ble_gatt_services},
         {"characteristics", solua_ble_gatt_characteristics}, {"read", solua_ble_gatt_read},
-        {"capacity", solua_ble_gatt_capacity}, {"write", solua_ble_gatt_write}, {NULL, NULL},
+        {"capacity", solua_ble_gatt_capacity}, {"write", solua_ble_gatt_write},
+        {"subscribe", solua_ble_gatt_subscribe}, {"unsubscribe", solua_ble_gatt_unsubscribe},
+        {"configure_queue", solua_ble_gatt_configure_queue}, {"poll", solua_ble_gatt_poll}, {NULL, NULL},
     };
     lua_newtable(L);
     luaL_setfuncs(L, methods, 0);
@@ -84,6 +86,13 @@ int main(void)
         "assert(not pcall(gatt.connect, '01:02:03:04:05:06', 1, 4294967296)); "
         "peer = gatt.connect('01:02:03:04:05:06', 1); "
         "assert(type(peer) == 'number' and gatt.capacity() == 1); "
+        "assert(not pcall(gatt.configure_queue, peer, 0)); "
+        "assert(not pcall(gatt.configure_queue, peer, 4294967296)); "
+        "assert(not pcall(gatt.subscribe, peer, 3, 1)); "
+        "assert(not pcall(gatt.unsubscribe, peer, 3, -1)); "
+        "gatt.configure_queue(peer, 2); gatt.subscribe(peer, 3); "
+        "assert(gatt.status(peer).event_capacity == 2 and gatt.poll(peer) == nil); "
+        "gatt.unsubscribe(peer, 3); "
         "assert(not pcall(gatt.status, 0)); "
         "assert(not pcall(gatt.status, 4294967296)); "
         "local s = gatt.status(peer); "
@@ -110,6 +119,16 @@ int main(void)
         "assert(not pcall(gatt.write, peer, 3, string.rep('x', 129))); "
         "assert(not pcall(gatt.write, peer, 3, 'xx', 0));");
     assert(write_response);
+    run(L, "gatt.subscribe(peer, 3, true)");
+    uint8_t notification_data[] = {0, 255};
+    solar_os_ble_backend_event_t notification = {.type=SOLAR_OS_BLE_BACKEND_NOTIFICATION,
+        .epoch=fake_epoch,.conn_id=7,.handle=3,.value=notification_data,.value_len=2,.indication=true};
+    solar_os_ble_service_event(&notification);
+    notification_data[1]=0;
+    run(L, "local e=gatt.poll(peer); assert(e.handle==3 and e.indication and e.data==string.char(0,255)); "
+           "assert(gatt.poll(peer)==nil)");
+    solar_os_ble_service_event(&notification);
+    run(L, "gatt.unsubscribe(peer,3); assert(gatt.poll(peer)==nil)");
     run(L, "gatt.write(peer, 3, string.char(0, 255), false)");
     assert(!write_response);
     uint8_t value[2];
@@ -153,6 +172,15 @@ int main(void)
     assert(solar_os_ble_gatt_read(3, value, sizeof(value), &len, 100) == ESP_OK);
     assert(solar_os_ble_gatt_disconnect() == ESP_OK);
     retired();
+    L = new_vm();
+    run(L, "peer=gatt.connect('01:02:03:04:05:06',1)");
+    defer_subscription=true;
+    const unsigned before_subscribe=submission_count();
+    assert(pthread_create(&stopper,NULL,stop_waiting_vm,(void *)&before_subscribe)==0);
+    run(L, "local ok,err=pcall(gatt.subscribe,peer,3); assert(not ok and string.find(err,'cancelled'))");
+    assert(pthread_join(stopper,NULL)==0);
+    defer_subscription=false;
+    solua_ble_destroy(); lua_close(L); retired(); stopped=false;
     puts("Lua BLE bindings: real VM, binary I/O, validation, ownership and cleanup OK");
     return 0;
 }

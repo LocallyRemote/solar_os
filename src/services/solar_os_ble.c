@@ -12,7 +12,7 @@
 #define BLE_CONNECT_TIMEOUT_MS 12000U
 #define BLE_OPERATION_TIMEOUT_MS 5000U
 
-typedef enum { BLE_OP_NONE, BLE_OP_CONNECT, BLE_OP_READ, BLE_OP_WRITE } ble_operation_t;
+typedef enum { BLE_OP_NONE, BLE_OP_CONNECT, BLE_OP_READ, BLE_OP_WRITE, BLE_OP_SUBSCRIBE } ble_operation_t;
 
 typedef struct ble_session {
     struct ble_session *next;
@@ -39,6 +39,9 @@ typedef struct ble_session {
     size_t value_len;
     StaticSemaphore_t wake_storage;
     SemaphoreHandle_t wake;
+    solar_os_ble_notification_t *events;
+    size_t event_capacity, event_head, event_count;
+    uint32_t events_dropped;
 } ble_session_t;
 
 static ble_session_t *sessions;
@@ -104,8 +107,16 @@ static void finish_locked(ble_session_t *s, esp_err_t result)
     }
 }
 
+static void clear_events_locked(ble_session_t *s)
+{
+    free(s->events);
+    s->events = NULL;
+    s->event_capacity = s->event_head = s->event_count = 0;
+}
+
 static void clear_link_locked(ble_session_t *s, const char *status)
 {
+    clear_events_locked(s);
     memset(&s->link, 0, sizeof(s->link));
     s->link.info.conn_id = SOLAR_OS_BLE_CONNECTION_INVALID;
     strlcpy(s->link.info.status, status, sizeof(s->link.info.status));
@@ -120,6 +131,7 @@ static void reap_locked(ble_session_t *s)
     while (*entry && *entry != s) entry = &(*entry)->next;
     if (*entry) *entry = s->next;
     vSemaphoreDelete(s->wake);
+    clear_events_locked(s);
     free(s);
 }
 
@@ -190,6 +202,7 @@ static uint32_t retire_locked(solar_os_ble_session_t owner, esp_err_t result)
         return 0;
     }
     s->link.retiring = true;
+    clear_events_locked(s);
     s->link.info.connected = false;
     s->link.info.service_count = 0;
     strlcpy(s->link.info.status, "retiring", sizeof(s->link.info.status));
@@ -385,6 +398,9 @@ esp_err_t solar_os_ble_session_get_info(solar_os_ble_session_t session,
     memset(info, 0, sizeof(*info));
     strlcpy(info->owner, s->owner, sizeof(info->owner));
     info->busy = s->busy;
+    info->event_capacity = s->event_capacity;
+    info->event_count = s->event_count;
+    info->events_dropped = s->events_dropped;
     info->gatt.conn_id = SOLAR_OS_BLE_CONNECTION_INVALID;
     strlcpy(info->gatt.status, online ? "idle" : "sleep", sizeof(info->gatt.status));
     if (s->link.owner == session) {
@@ -728,6 +744,37 @@ void solar_os_ble_service_event(const solar_os_ble_backend_event_t *event)
             finish_locked(s, event->result);
         }
         break;
+    case SOLAR_OS_BLE_BACKEND_NOTIFICATION:
+        if (s->link.info.connected && event->conn_id == s->link.info.conn_id && s->events) {
+            if (event->result != ESP_OK || event->value_len > SOLAR_OS_BLE_GATT_VALUE_MAX ||
+                (event->value_len && !event->value) || s->event_count == s->event_capacity) {
+                if (s->events_dropped != UINT32_MAX) ++s->events_dropped;
+            } else {
+                solar_os_ble_notification_t *n =
+                    &s->events[(s->event_head + s->event_count++) % s->event_capacity];
+                n->handle = event->handle;
+                n->indication = event->indication;
+                n->value_len = event->value_len;
+                if (n->value_len) memcpy(n->value, event->value, n->value_len);
+            }
+        }
+        break;
+    case SOLAR_OS_BLE_BACKEND_SUBSCRIBED:
+        if (matched && s->op == BLE_OP_SUBSCRIBE && event->conn_id == s->link.info.conn_id &&
+            event->handle == s->handle) {
+            if (event->result == ESP_OK && !event->subscription_mode) {
+                /* Compact in ring order, preserving other characteristics. */
+                size_t kept = 0;
+                for (size_t i = 0; i < s->event_count; ++i) {
+                    solar_os_ble_notification_t *n = &s->events[(s->event_head + i) % s->event_capacity];
+                    if (n->handle != event->handle)
+                        s->events[(s->event_head + kept++) % s->event_capacity] = *n;
+                }
+                s->event_count = kept;
+            }
+            finish_locked(s, event->result);
+        }
+        break;
     case SOLAR_OS_BLE_BACKEND_READ:
     case SOLAR_OS_BLE_BACKEND_WRITTEN:
         if (matched && event->conn_id == s->link.info.conn_id && s->handle == event->handle &&
@@ -741,6 +788,7 @@ void solar_os_ble_service_event(const solar_os_ble_backend_event_t *event)
         break;
     case SOLAR_OS_BLE_BACKEND_CLOSED:
         if (event->conn_id == s->link.info.conn_id) {
+            clear_events_locked(s);
             s->link.retiring = true;
             s->link.info.connected = false;
             s->link.info.service_count = 0;
@@ -769,6 +817,83 @@ static bool owns_peer(solar_os_ble_session_t session, solar_os_ble_peer_t peer)
     bool valid = owner && !owner->parent && child && child->parent == session;
     unlock_state();
     return valid;
+}
+
+static ble_session_t *owned_peer_locked(solar_os_ble_session_t session, solar_os_ble_peer_t peer)
+{
+    ble_session_t *owner = live_locked(session), *s = live_locked(peer);
+    return owner && !owner->parent && s && s->parent == session ? s : NULL;
+}
+
+static esp_err_t configure_queue_locked(ble_session_t *s, size_t capacity)
+{
+    if (!capacity || capacity > SIZE_MAX / sizeof(*s->events)) return ESP_ERR_INVALID_ARG;
+    if (!s->link.info.connected || s->link.retiring || s->busy || sleeping || s->event_count)
+        return ESP_ERR_INVALID_STATE;
+    if (s->event_capacity == capacity) return ESP_OK;
+    solar_os_ble_notification_t *events = calloc(capacity, sizeof(*events));
+    if (!events) return ESP_ERR_NO_MEM;
+    clear_events_locked(s);
+    s->events = events;
+    s->event_capacity = capacity;
+    return ESP_OK;
+}
+
+esp_err_t solar_os_ble_peer_configure_queue(solar_os_ble_session_t session,
+    solar_os_ble_peer_t peer, size_t capacity)
+{
+    solar_os_ble_service_prepare_runtime();
+    lock_state();
+    ble_session_t *s = owned_peer_locked(session, peer);
+    esp_err_t ret = s ? configure_queue_locked(s, capacity) : ESP_ERR_INVALID_STATE;
+    unlock_state();
+    return ret;
+}
+
+esp_err_t solar_os_ble_peer_poll(solar_os_ble_session_t session,
+    solar_os_ble_peer_t peer, solar_os_ble_notification_t *event)
+{
+    if (!event) return ESP_ERR_INVALID_ARG;
+    solar_os_ble_service_prepare_runtime();
+    lock_state();
+    ble_session_t *s = owned_peer_locked(session, peer);
+    esp_err_t ret = ESP_ERR_INVALID_STATE;
+    if (s && s->link.info.connected && !s->link.retiring && !sleeping) {
+        ret = ESP_ERR_NOT_FOUND;
+        if (s->event_count) {
+            *event = s->events[s->event_head];
+            s->event_head = (s->event_head + 1) % s->event_capacity;
+            --s->event_count;
+            ret = ESP_OK;
+        }
+    }
+    unlock_state();
+    return ret;
+}
+
+esp_err_t solar_os_ble_peer_subscribe(solar_os_ble_session_t session,
+    solar_os_ble_peer_t peer, uint16_t handle, uint8_t mode, uint32_t timeout_ms)
+{
+    if (!handle || mode > 2) return ESP_ERR_INVALID_ARG;
+    lock_dispatch();
+    lock_state();
+    ble_session_t *s = owned_peer_locked(session, peer);
+    esp_err_t ret = ESP_ERR_INVALID_STATE;
+    if (s && s->link.info.connected && !s->link.retiring) {
+        ret = mode && !s->events ? configure_queue_locked(s, 16) : ESP_OK;
+        if (ret == ESP_OK) ret = begin_locked(s, BLE_OP_SUBSCRIBE, handle);
+    }
+    if (ret != ESP_OK) { unlock_state(); unlock_dispatch(); return ret; }
+    const uint32_t epoch = s->link.epoch, request = s->request;
+    unlock_state();
+    ret = solar_os_ble_backend_subscribe(epoch, request, handle, mode);
+    if (ret != ESP_OK) {
+        lock_state();
+        if (s->pending) finish_locked(s, ret);
+        unlock_state();
+    }
+    unlock_dispatch();
+    return wait_operation(peer, request, timeout_ms ? timeout_ms : BLE_OPERATION_TIMEOUT_MS, NULL, 0, NULL);
 }
 
 esp_err_t solar_os_ble_peer_connect(solar_os_ble_session_t session,

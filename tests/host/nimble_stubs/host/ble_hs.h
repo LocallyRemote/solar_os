@@ -49,7 +49,7 @@ struct ble_gap_event {
         struct { int status; uint16_t conn_handle; } connect;
         struct { int reason; struct { uint16_t conn_handle; } conn; } disconnect;
         struct { int status; uint16_t conn_handle; } enc_change;
-        struct { uint16_t conn_handle, attr_handle; struct os_mbuf *om; } notify_rx;
+        struct { uint16_t conn_handle, attr_handle; struct os_mbuf *om; bool indication; } notify_rx;
     };
 };
 typedef int ble_gap_event_fn(struct ble_gap_event *, void *);

@@ -7,11 +7,16 @@
 #include "freertos/semphr.h"
 #include "nimble/nimble_port.h"
 
-typedef enum { OP_NONE, OP_CONNECT, OP_READ, OP_WRITE } operation_t;
+typedef enum { OP_NONE, OP_CONNECT, OP_READ, OP_WRITE, OP_SUBSCRIBE } operation_t;
+typedef struct {
+    solar_os_ble_gatt_characteristic_t info;
+    uint16_t definition, cccd;
+    uint8_t mode;
+} characteristic_cache_t;
 typedef struct {
     uint16_t start, end;
     size_t count;
-    solar_os_ble_gatt_characteristic_t *chars;
+    characteristic_cache_t *chars;
 } service_cache_t;
 
 static StaticSemaphore_t mutex_storage;
@@ -25,6 +30,10 @@ typedef struct ble_client {
     bool queued;
     uint32_t epoch, request;
     uint16_t conn, handle;
+    uint16_t descriptor_end;
+    uint8_t subscription_mode;
+    characteristic_cache_t *subscription;
+    bool subscription_writing;
     uint8_t bda[6];
     operation_t op;
     bool retiring, connecting, response;
@@ -259,7 +268,9 @@ static int chars_callback(uint16_t conn, const struct ble_gatt_error *error,
     if (!rc) {
         service_cache_t *s = &client->services[client->discovering];
         if (s->count < SOLAR_OS_BLE_GATT_MAX_CHARACTERISTICS) {
-            solar_os_ble_gatt_characteristic_t *c = &s->chars[s->count++];
+            characteristic_cache_t *cached = &s->chars[s->count++];
+            cached->definition = chr->def_handle;
+            solar_os_ble_gatt_characteristic_t *c = &cached->info;
             c->handle = chr->val_handle;
             c->properties = chr->properties;
             uuid_string(&chr->uuid.u, c->uuid, sizeof(c->uuid));
@@ -349,12 +360,50 @@ static int mtu_callback(uint16_t conn, const struct ble_gatt_error *error,
     return 0;
 }
 
+static characteristic_cache_t *find_characteristic(ble_client_t *client, uint16_t handle, uint16_t *end)
+{
+    for (size_t i = 0; i < client->count; ++i) {
+        service_cache_t *s = &client->services[i];
+        for (size_t j = 0; j < s->count; ++j) {
+            if (s->chars[j].info.handle == handle) {
+                if (end) {
+                    *end = s->end;
+                    if (j + 1 < s->count) {
+                        uint16_t next = s->chars[j + 1].definition;
+                        if (next <= handle) *end = handle; /* Malformed discovery cannot widen the range. */
+                        else if (next - 1 < *end) *end = next - 1;
+                    }
+                }
+                return &s->chars[j];
+            }
+        }
+    }
+    return NULL;
+}
+
 static int gap_callback(struct ble_gap_event *event, void *arg)
 {
     lock();
     ble_client_t *client = find_epoch((uint32_t)(uintptr_t)arg);
     if (!client) { unlock(); return 0; }
     solar_os_ble_backend_event_t e;
+    if (event->type == BLE_GAP_EVENT_NOTIFY_RX) {
+        if (client->retiring || client->conn != event->notify_rx.conn_handle) { unlock(); return 0; }
+        characteristic_cache_t *c = find_characteristic(client, event->notify_rx.attr_handle, NULL);
+        const uint8_t mode = event->notify_rx.indication ? 2 : 1;
+        if (!c || c->mode != mode) { unlock(); return 0; }
+        uint8_t value[SOLAR_OS_BLE_GATT_VALUE_MAX];
+        e = event_locked(client, SOLAR_OS_BLE_BACKEND_NOTIFICATION, 0);
+        e.handle = event->notify_rx.attr_handle;
+        e.indication = event->notify_rx.indication;
+        e.value_len = OS_MBUF_PKTLEN(event->notify_rx.om);
+        if (e.value_len > sizeof(value)) e.result = ESP_ERR_INVALID_SIZE;
+        else if (os_mbuf_copydata(event->notify_rx.om, 0, e.value_len, value)) e.result = ESP_FAIL;
+        else e.value = value;
+        unlock();
+        solar_os_ble_service_event(&e);
+        return 0; /* NimBLE owns ATT indication confirmation, not the app. */
+    }
     if (event->type == BLE_GAP_EVENT_CONNECT) {
         client->connecting = false;
         int rc = event->connect.status;
@@ -450,7 +499,7 @@ esp_err_t solar_os_ble_backend_characteristics(uint32_t epoch,
         service_cache_t *s = &client->services[i];
         if (s->start == service->start_handle && s->end == service->end_handle) {
             size_t n = s->count < max ? s->count : max;
-            if (n) memcpy(chars, s->chars, n * sizeof(*chars));
+            for (size_t j = 0; j < n; ++j) chars[j] = s->chars[j].info;
             if (count) *count = n;
             unlock(); return ESP_OK;
         }
@@ -490,6 +539,89 @@ static bool ready(ble_client_t *client, uint32_t epoch)
 {
     return client && epoch && client->epoch == epoch && !client->retiring &&
         client->conn != BLE_HS_CONN_HANDLE_NONE && client->op == OP_NONE;
+}
+
+esp_err_t solar_os_ble_backend_subscribe(uint32_t epoch, uint32_t request, uint16_t handle, uint8_t mode)
+{
+    if (!handle || mode > 2) return ESP_ERR_INVALID_ARG;
+    lock();
+    ble_client_t *client = find_epoch(epoch);
+    if (!ready(client, epoch)) { unlock(); return ESP_ERR_INVALID_STATE; }
+    uint16_t end;
+    characteristic_cache_t *c = find_characteristic(client, handle, &end);
+    if (!c) { unlock(); return ESP_ERR_NOT_FOUND; }
+    uint8_t required = mode == 1 ? SOLAR_OS_BLE_CHAR_NOTIFY : SOLAR_OS_BLE_CHAR_INDICATE;
+    if (mode && !(c->info.properties & required)) { unlock(); return ESP_ERR_NOT_SUPPORTED; }
+    if (end <= handle) { unlock(); return ESP_ERR_NOT_FOUND; }
+    client->op = OP_SUBSCRIBE;
+    client->request = request;
+    client->handle = handle;
+    client->descriptor_end = end;
+    client->subscription = c;
+    client->subscription_mode = mode;
+    client->subscription_writing = false;
+    client->queued = true;
+    unlock();
+    ble_npl_eventq_put(nimble_port_get_dflt_eventq(), &command_event);
+    return ESP_OK;
+}
+
+/* Called with adapter lock; emits completion after releasing it. */
+static void subscription_complete_locked(ble_client_t *client, int status)
+{
+    solar_os_ble_backend_event_t e = event_locked(client, SOLAR_OS_BLE_BACKEND_SUBSCRIBED, status);
+    if (status == BLE_HS_ENOENT) e.result = ESP_ERR_NOT_FOUND;
+    e.subscription_mode = client->subscription_mode;
+    if (!status) client->subscription->mode = client->subscription_mode;
+    else if (!client->subscription_writing) client->subscription->cccd = 0;
+    client->op = OP_NONE;
+    client->request = 0;
+    client->subscription = NULL;
+    unlock();
+    solar_os_ble_service_event(&e);
+}
+
+static int subscription_write_callback(uint16_t conn, const struct ble_gatt_error *error,
+    struct ble_gatt_attr *attr, void *arg)
+{
+    lock();
+    ble_client_t *client = find_request((uint32_t)(uintptr_t)arg);
+    if (!client || client->retiring || client->conn != conn || client->op != OP_SUBSCRIBE ||
+        !client->subscription_writing || (!error->status && (!attr || attr->handle != client->subscription->cccd))) {
+        unlock(); return 0;
+    }
+    subscription_complete_locked(client, error->status);
+    return 0;
+}
+
+static int subscription_write_locked(ble_client_t *client)
+{
+    client->subscription_writing = true;
+    const uint8_t value[2] = {client->subscription_mode, 0};
+    return ble_gattc_write_flat(client->conn, client->subscription->cccd, value, sizeof(value),
+        subscription_write_callback, (void *)(uintptr_t)client->request);
+}
+
+static int subscription_descriptors_callback(uint16_t conn, const struct ble_gatt_error *error,
+    uint16_t chr_handle, const struct ble_gatt_dsc *dsc, void *arg)
+{
+    lock();
+    ble_client_t *client = find_request((uint32_t)(uintptr_t)arg);
+    if (!client || client->retiring || client->conn != conn || client->op != OP_SUBSCRIBE ||
+        client->subscription_writing) { unlock(); return 0; }
+    int rc = error->status;
+    if (!rc) {
+        if (chr_handle == client->handle && dsc && dsc->handle > client->handle &&
+            dsc->handle <= client->descriptor_end && ble_uuid_u16(&dsc->uuid.u) == 0x2902)
+            client->subscription->cccd = dsc->handle;
+        unlock(); return 0;
+    }
+    if (rc == BLE_HS_EDONE) {
+        rc = client->subscription->cccd ? subscription_write_locked(client) : BLE_HS_ENOENT;
+        if (!rc) { unlock(); return 0; }
+    }
+    subscription_complete_locked(client, rc);
+    return 0;
 }
 
 esp_err_t solar_os_ble_backend_read(uint32_t epoch, uint32_t request, uint16_t handle)
@@ -543,6 +675,13 @@ static void command_client(ble_client_t *client)
         solar_os_ble_service_event(&e);
         e.type = SOLAR_OS_BLE_BACKEND_RETIRED;
         solar_os_ble_service_event(&e);
+        return;
+    } else if (client->op == OP_SUBSCRIBE) {
+        rc = client->subscription->cccd ? subscription_write_locked(client) :
+            ble_gattc_disc_all_dscs(client->conn, client->handle, client->descriptor_end,
+                subscription_descriptors_callback, (void *)(uintptr_t)client->request);
+        if (rc) subscription_complete_locked(client, rc);
+        else unlock();
         return;
     } else if (client->op == OP_READ) {
         type = SOLAR_OS_BLE_BACKEND_READ;

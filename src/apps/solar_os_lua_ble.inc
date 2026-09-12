@@ -107,6 +107,9 @@ static int solua_ble_gatt_status(lua_State *L)
     solua_set_int(L, -1, "mtu", info.gatt.mtu);
     solua_set_int(L, -1, "service_count", info.gatt.service_count);
     solua_set_int(L, -1, "max_value_bytes", SOLAR_OS_BLE_GATT_VALUE_MAX);
+    solua_set_int(L, -1, "event_capacity", info.event_capacity);
+    solua_set_int(L, -1, "event_count", info.event_count);
+    solua_set_int(L, -1, "events_dropped", info.events_dropped);
     return 1;
 }
 
@@ -176,4 +179,45 @@ static int solua_ble_gatt_write(lua_State *L)
     const uint32_t timeout = solua_ble_timeout(L, 5);
     return solua_ble_check(L, solar_os_ble_peer_write(solua_ble_get(L), solua_ble_peer(L), handle,
         (const uint8_t *)value, len, response, timeout));
+}
+
+static int solua_ble_gatt_subscribe(lua_State *L)
+{
+    const uint16_t handle = solua_ble_handle(L, 2);
+    bool indication = false;
+    if (!lua_isnoneornil(L, 3)) {
+        luaL_checktype(L, 3, LUA_TBOOLEAN);
+        indication = lua_toboolean(L, 3);
+    }
+    const uint32_t timeout = solua_ble_timeout(L, 4);
+    return solua_ble_check(L, solar_os_ble_peer_subscribe(solua_ble_get(L), solua_ble_peer(L),
+        handle, indication ? 2 : 1, timeout));
+}
+
+static int solua_ble_gatt_unsubscribe(lua_State *L)
+{
+    const uint16_t handle = solua_ble_handle(L, 2);
+    const uint32_t timeout = solua_ble_timeout(L, 3);
+    return solua_ble_check(L, solar_os_ble_peer_subscribe(solua_ble_get(L), solua_ble_peer(L), handle, 0, timeout));
+}
+
+static int solua_ble_gatt_configure_queue(lua_State *L)
+{
+    const lua_Integer capacity = luaL_checkinteger(L, 2);
+    if (capacity <= 0 || (uint64_t)capacity > UINT32_MAX) return luaL_error(L, "invalid queue capacity");
+    return solua_ble_check(L, solar_os_ble_peer_configure_queue(solua_ble_get(L), solua_ble_peer(L), capacity));
+}
+
+static int solua_ble_gatt_poll(lua_State *L)
+{
+    solar_os_ble_notification_t event;
+    esp_err_t err = solar_os_ble_peer_poll(solua_ble_get(L), solua_ble_peer(L), &event);
+    if (err == ESP_ERR_NOT_FOUND) { lua_pushnil(L); return 1; }
+    solua_ble_check(L, err);
+    lua_createtable(L, 0, 3);
+    solua_set_int(L, -1, "handle", event.handle);
+    solua_set_bool(L, -1, "indication", event.indication);
+    lua_pushlstring(L, (const char *)event.value, event.value_len);
+    lua_setfield(L, -2, "data");
+    return 1;
 }

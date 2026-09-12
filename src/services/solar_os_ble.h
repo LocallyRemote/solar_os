@@ -82,8 +82,17 @@ typedef struct {
     char owner[SOLAR_OS_BLE_OWNER_MAX];
     bool busy;
     bool retiring;
+    size_t event_capacity, event_count;
+    uint32_t events_dropped;
     solar_os_ble_gatt_status_t gatt;
 } solar_os_ble_session_info_t;
+
+typedef struct {
+    uint16_t handle;
+    bool indication;
+    size_t value_len;
+    uint8_t value[SOLAR_OS_BLE_GATT_VALUE_MAX];
+} solar_os_ble_notification_t;
 
 /* Owners retain a session handle and close it on exit (including errors).
  * Handles are generation checked; owner names are diagnostic, not credentials.
@@ -128,6 +137,23 @@ esp_err_t solar_os_ble_session_write(solar_os_ble_session_t session,
  * Peer handles survive remote disconnect/sleep for status; disconnect releases
  * them, then connect returns a fresh handle with fresh discovery. */
 size_t solar_os_ble_peer_capacity(void);
+/* Queue storage is allocated on demand (default 16 on first subscribe).
+ * Configure only on an idle connected peer with an empty queue. Allocation
+ * failure preserves the old queue. Full queues drop NEW events; oversized
+ * values are dropped whole, never truncated. Status exposes a saturating loss
+ * counter. Poll is nonblocking and returns NOT_FOUND when empty.
+ * Disconnect/cancel/sleep discard queued events and release queue storage. */
+esp_err_t solar_os_ble_peer_configure_queue(solar_os_ble_session_t session,
+    solar_os_ble_peer_t peer, size_t capacity);
+esp_err_t solar_os_ble_peer_poll(solar_os_ble_session_t session,
+    solar_os_ble_peer_t peer, solar_os_ble_notification_t *event);
+/* mode: 0 unsubscribe, 1 notifications, 2 indications. Discovers the CCCD
+ * within this characteristic's descriptor range and waits for its write ACK.
+ * Timeout/cancellation retires only this peer. No app callback runs on the host.
+ * Poll may run during a pending subscription. Successful unsubscribe discards
+ * queued events for its handle; other subscriptions/queues are unaffected. */
+esp_err_t solar_os_ble_peer_subscribe(solar_os_ble_session_t session,
+    solar_os_ble_peer_t peer, uint16_t handle, uint8_t mode, uint32_t timeout_ms);
 esp_err_t solar_os_ble_peer_connect(solar_os_ble_session_t session,
     const uint8_t bda[6], uint8_t addr_type, uint32_t timeout_ms, solar_os_ble_peer_t *peer);
 esp_err_t solar_os_ble_peer_disconnect(solar_os_ble_session_t session, solar_os_ble_peer_t peer);

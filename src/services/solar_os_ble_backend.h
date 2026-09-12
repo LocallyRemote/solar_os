@@ -14,6 +14,8 @@ typedef enum {
     SOLAR_OS_BLE_BACKEND_READ,
     SOLAR_OS_BLE_BACKEND_WRITTEN,
     SOLAR_OS_BLE_BACKEND_CLOSED,
+    SOLAR_OS_BLE_BACKEND_SUBSCRIBED,
+    SOLAR_OS_BLE_BACKEND_NOTIFICATION,
 } solar_os_ble_backend_event_type_t;
 
 typedef struct {
@@ -27,6 +29,8 @@ typedef struct {
     uint16_t mtu;
     uint8_t bda[6];
     uint8_t reason;
+    uint8_t subscription_mode;
+    bool indication;
     solar_os_ble_gatt_service_t service;
     const uint8_t *value;
     size_t value_len;
@@ -60,5 +64,7 @@ esp_err_t solar_os_ble_backend_characteristics(uint32_t epoch,
     solar_os_ble_gatt_characteristic_t *characteristics,
     size_t max_characteristics, size_t *count);
 esp_err_t solar_os_ble_backend_read(uint32_t epoch, uint32_t request, uint16_t handle);
+esp_err_t solar_os_ble_backend_subscribe(uint32_t epoch, uint32_t request,
+    uint16_t handle, uint8_t mode);
 esp_err_t solar_os_ble_backend_write(uint32_t epoch, uint32_t request, uint16_t handle,
     const uint8_t *value, size_t value_len, bool with_response);

@@ -101,7 +101,10 @@ Lua strings are binary-safe, so byte-oriented APIs such as `uart.read`, `i2c.rea
 `capacity()`, `connect(address, addr_type, timeout_ms)`, `disconnect(peer)`,
 `status(peer)`, `services(peer)`, `characteristics(peer, service_index)`,
 `read(peer, handle, timeout_ms)`, and
-`write(peer, handle, data, with_response, timeout_ms)`. Connect returns an opaque
+`write(peer, handle, data, with_response, timeout_ms)`,
+`subscribe(peer, handle, indicate, timeout_ms)`,
+`unsubscribe(peer, handle, timeout_ms)`, `configure_queue(peer, capacity)`, and
+`poll(peer)`. Connect returns an opaque
 peer handle; capacity reports the total configured generic-peer budget, not
 currently free slots. Optional trailing arguments
 may be omitted or `nil`; defaults are public address type, service-default
@@ -112,6 +115,19 @@ are one-based Lua arrays, but each service's `index` field is **zero-based**;
 pass that field to `characteristics()`. Status and discovery fields, service
 limits, timeouts, retirement, and reconnect rules match Python. Errors raise Lua
 errors; cancellation reports `BLE operation cancelled`.
+
+Subscribe discovers the CCCD and waits for its write acknowledgement. `indicate`
+defaults to `false` (notifications); use `true` for indications. `poll(peer)` is
+nonblocking and returns `nil` or `{handle=..., data=..., indication=...}`; `data`
+is a binary Lua string. No interpreter callback runs on the Bluetooth task.
+The per-peer queue defaults to 16 entries on first subscribe. Configure a positive
+capacity while connected, idle and with an empty queue. Failed allocation leaves
+the old queue intact. Full queues drop new events; values over 128 bytes are
+dropped whole. Status reports `event_capacity`, `event_count`, and the saturating
+`events_dropped` counter. Indication confirmation acknowledges protocol receipt,
+not app consumption. Disconnect, timeout, cancellation and sleep discard queued
+events; reconnect and subscribe again after resume. Successful unsubscribe
+discards queued events only for its characteristic. Other peers are unaffected.
 
 Lua owns a separate session, automatically closed on interpreter exit, errors,
 or stop, closing all its peers. Multiple peers can coexist within the configured
@@ -134,6 +150,17 @@ end
 -- Use a discovered handle: local data = gatt.read(peer, handle)
 -- Binary write: gatt.write(peer, handle, string.char(0, 255), true)
 gatt.disconnect(peer)
+```
+
+For an already connected `peer` and a discovered notification-capable `handle`:
+
+```lua
+gatt.configure_queue(peer, 32)
+gatt.subscribe(peer, handle) -- third argument true selects indications
+local event = gatt.poll(peer) -- call regularly from the application's loop
+if event then print(event.handle, event.data, event.indication) end
+print(gatt.status(peer).events_dropped)
+-- When finished: gatt.unsubscribe(peer, handle)
 ```
 
 ### Generic pointer and axis input

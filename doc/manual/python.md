@@ -1096,7 +1096,8 @@ own multiple peers, with independent operations and connection state.
 - `disconnect(peer)`: invalidate the handle and request asynchronous disconnect.
   It cannot disconnect another runtime's or the shell's peer.
 - `status(peer)`: return `owner`, `address`, `addr_type`, `status`, `connected`,
-  `busy`, `retiring`, `mtu`, `service_count`, and `max_value_bytes`.
+  `busy`, `retiring`, `mtu`, `service_count`, `max_value_bytes`, `event_capacity`,
+  `event_count`, and `events_dropped`.
 - `services(peer)`: return dictionaries with `index`, `uuid`, `primary`,
   `start_handle`, and `end_handle`.
 - `characteristics(peer, service_index)`: return dictionaries with `uuid`, `handle`,
@@ -1106,9 +1107,22 @@ own multiple peers, with independent operations and connection state.
 - `write(peer, handle, data, with_response=True, timeout_ms=0)`: write binary data.
   `data` must support the buffer protocol, for example `bytes` or `bytearray`.
   Without response, completion confirms local submission, not peer receipt.
+- `subscribe(peer, handle, indicate=False, timeout_ms=0)`: discover the
+  characteristic's CCCD and enable notifications, or indications when `True`.
+  The characteristic must advertise the requested property. Completion waits
+  for the CCCD write acknowledgement; delivery starts after that acknowledgement.
+- `unsubscribe(peer, handle, timeout_ms=0)`: disable delivery and discard queued
+  events for this characteristic after the CCCD write succeeds.
+- `configure_queue(peer, capacity)`: allocate a queue shared by this peer's
+  subscriptions. Capacity must be positive; allocation may fail. The peer must
+  be connected, with no pending operation and an empty queue. Failure preserves
+  the old queue. First subscribe allocates 16 entries unless configured earlier.
+- `poll(peer)`: nonblocking; return `None` when empty or a dictionary with
+  `handle`, binary `data` (`bytes`), and `indication` (`bool`). It may be called
+  while another task is performing an operation on this peer.
 
 Arguments are positional. Timeouts accept `0..60000` milliseconds; zero selects
-12 seconds for connect or 5 seconds for read/write. Errors raise `OSError`;
+12 seconds for connect or 5 seconds for read/write/subscribe/unsubscribe. Errors raise `OSError`;
 cancellation reports `BLE operation cancelled`. Capacity exhaustion reports
 `BLE connection capacity exhausted`; allocation can also fail. Existing peers
 remain connected when another connection cannot be admitted. Connect peers
@@ -1126,8 +1140,15 @@ The current service retains at most 24 services and 64 characteristics per
 service. Reads return at most the first 128 bytes; writes accept 1..128 bytes
 and must fit within the negotiated MTU minus three bytes. `mtu` reports
 the negotiated value; connection setup performs MTU exchange before discovery.
-There is no script MTU setter, automatic write chunking, notification
-subscription, GATT server, or advertising API yet.
+Notification queues preserve arrival order. Full queues drop new events;
+payloads exceeding 128 bytes are dropped whole, never truncated. Both increment
+the saturating `events_dropped` counter. NimBLE confirms indications at the
+protocol layer; confirmation does not mean the application consumed the event.
+Poll and monitor loss counters regularly. Disconnect, cancellation, timeout and
+sleep release queue storage and discard queued events. Loss counters remain
+readable for the peer handle's lifetime. Reconnect and resubscribe after sleep.
+No user callback runs on the Bluetooth task. There is no script MTU setter,
+automatic write chunking, GATT server, or advertising API yet.
 
 ```python
 import solaros
@@ -1147,6 +1168,18 @@ try:
 finally:
     for peer in peers:
         gatt.disconnect(peer)
+```
+
+For an already connected `peer` and a discovered notification-capable `handle`:
+
+```python
+gatt.configure_queue(peer, 32)
+gatt.subscribe(peer, handle)       # pass True as third argument for indications
+event = gatt.poll(peer)           # call regularly from the application's loop
+if event is not None:
+    print(event["handle"], event["data"], event["indication"])
+print(gatt.status(peer)["events_dropped"])
+# When finished: gatt.unsubscribe(peer, handle)
 ```
 
 ## `solaros.hid`
